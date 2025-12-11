@@ -353,56 +353,77 @@
             showlegend: false
         };
 
-        // --- SMART RENDERER ---
+        // --- PRO RENDERER ---
         function renderAnalysis(data) {
             console.log("Rendering Mode:", data.mode);
             const layout = JSON.parse(JSON.stringify(layout_base));
             layout.title = { text: data.title, font: { color: '#FFF', size: 14 } };
 
-            // 1. PRACTICE MODE (Scatter Plot of Laps)
+            // 1. PRACTICE MODE: Stint Analysis (Colored by Tire)
             if (data.mode === 'PRACTICE') {
                 const trace = {
                     x: data.x, y: data.y,
-                    mode: 'lines+markers',
+                    mode: 'markers+lines',
                     type: 'scatter',
-                    line: { color: data.color || '#0A84FF', shape: 'spline', width: 2 },
-                    marker: { size: 6, color: '#FFF' }
+                    line: { color: '#333', width: 1, dash: 'dot' },
+                    marker: {
+                        size: 10,
+                        color: data.colors || '#0A84FF',
+                        line: { color: '#FFF', width: 1 }
+                    },
+                    text: data.compounds || [],
+                    hovertemplate: 'Lap %{x}<br>%{y:.2f}s<br>%{text}<extra></extra>'
                 };
                 layout.yaxis.title = { text: "Lap Time (s)", font: { color: '#8E8E93' } };
                 layout.xaxis.title = { text: "Lap Number", font: { color: '#8E8E93' } };
                 Plotly.newPlot('chart-area', [trace], layout, { displayModeBar: false });
             }
 
-            // 2. QUALI MODE (Speed Trace)
+            // 2. QUALI MODE: Ghost Car Comparison (Driver vs Pole)
             else if (data.mode === 'QUALI') {
-                const traceSpeed = {
-                    x: data.distance, y: data.speed,
-                    type: 'scatter', mode: 'lines', name: 'Speed',
-                    line: { color: data.color || '#FFD60A', width: 2 }
+                // Trace 1: Selected Driver
+                const trace1 = {
+                    x: data.distance, y: data.driver_speed,
+                    type: 'scatter', mode: 'lines',
+                    name: 'You',
+                    line: { color: data.driver_color || '#0A84FF', width: 2.5 }
                 };
-                const traceThrottle = {
-                    x: data.distance, y: data.throttle,
-                    type: 'scatter', mode: 'lines', name: 'Throttle',
-                    yaxis: 'y2',
-                    line: { color: '#30D158', width: 1 },
-                    fill: 'tozeroy',
-                    opacity: 0.3
+
+                // Trace 2: The Pole Sitter (Ghost)
+                const trace2 = {
+                    x: data.distance, y: data.pole_speed,
+                    type: 'scatter', mode: 'lines',
+                    name: 'Pole (' + data.pole_driver + ')',
+                    line: { color: '#FF3B30', width: 2, dash: 'solid' },
+                    opacity: 0.7
                 };
-                layout.yaxis2 = { overlaying: 'y', side: 'right', showgrid: false, visible: false };
-                layout.hovermode = 'x unified';
-                Plotly.newPlot('chart-area', [traceSpeed, traceThrottle], layout, { displayModeBar: false });
+
+                layout.yaxis.title = { text: "Speed (km/h)", font: { color: '#8E8E93' } };
+                layout.xaxis.title = { text: "Distance (m)", font: { color: '#8E8E93' } };
+                layout.hovermode = "x unified";
+                layout.showlegend = true;
+                layout.legend = { x: 0, y: 1, font: { color: 'white' }, bgcolor: 'rgba(0,0,0,0)' };
+
+                Plotly.newPlot('chart-area', [trace1, trace2], layout, { displayModeBar: false });
             }
 
-            // 3. RACE MODE (Gap Trend)
+            // 3. RACE MODE: Pace Consistency (Colored by Tire)
             else if (data.mode === 'RACE') {
                 const trace = {
                     x: data.x, y: data.y,
-                    type: 'scatter', mode: 'lines',
-                    fill: 'tozeroy',
-                    line: { color: data.color || '#FF453A', width: 2 }
+                    type: 'scatter', mode: 'markers+lines',
+                    line: { color: data.driver_color || '#30D158', width: 2 },
+                    marker: {
+                        size: 8,
+                        color: data.colors || '#30D158',
+                        line: { color: '#FFF', width: 1 }
+                    },
+                    text: data.compounds || [],
+                    hovertemplate: 'Lap %{x}<br>%{y:.2f}s<br>%{text}<extra></extra>'
                 };
-                layout.yaxis.title = { text: "Gap Trend (Cumulative Δ)", font: { color: '#8E8E93' } };
+                layout.yaxis.title = { text: "Lap Time (s)", font: { color: '#8E8E93' } };
                 layout.xaxis.title = { text: "Lap Number", font: { color: '#8E8E93' } };
+                layout.yaxis.autorange = true;
                 Plotly.newPlot('chart-area', [trace], layout, { displayModeBar: false });
             }
 
