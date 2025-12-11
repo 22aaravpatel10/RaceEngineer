@@ -185,6 +185,24 @@ class RaceControlWorker(QObject):
                 
             car = lap.get_car_data().add_distance()
             
+            # Get position data for track map
+            x_pos = []
+            y_pos = []
+            try:
+                pos = lap.get_pos_data()
+                if pos is not None and len(pos) > 0:
+                    # Interpolate X/Y to match telemetry timestamps
+                    pos['Time_sec'] = pos['Time'].dt.total_seconds()
+                    car['Time_sec'] = car['Time'].dt.total_seconds()
+                    
+                    fx = interp1d(pos['Time_sec'], pos['X'], fill_value="extrapolate")
+                    fy = interp1d(pos['Time_sec'], pos['Y'], fill_value="extrapolate")
+                    
+                    x_pos = fx(car['Time_sec']).tolist()
+                    y_pos = fy(car['Time_sec']).tolist()
+            except Exception as e:
+                print(f"GPS Data not available: {e}")
+            
             # Prepare Raw Data
             raw_data = {
                 "driver": driver_id,
@@ -194,7 +212,9 @@ class RaceControlWorker(QObject):
                 "throttle": car['Throttle'],
                 "brake": car['Brake'].astype(int),
                 "rpm": car['RPM'],
-                "gear": car['nGear']
+                "gear": car['nGear'],
+                "x_pos": x_pos,
+                "y_pos": y_pos
             }
             
             # SANITIZE (The Fix for "No Data")

@@ -100,6 +100,14 @@ class Bridge(QObject):
     def minimize_window(self):
         self.view.window().showMinimized()
 
+    @pyqtSlot()
+    def maximize_window(self):
+        window = self.view.window()
+        if window.isMaximized():
+            window.showNormal()
+        else:
+            window.showMaximized()
+
 class OvercutWindow(QMainWindow):
     request_load = pyqtSignal(str, str, str)
 
