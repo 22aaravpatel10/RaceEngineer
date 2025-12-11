@@ -1,0 +1,8 @@
+PyQt6
+PyQt6-WebEngine
+fastf1==3.3.0
+requests
+pandas
+numpy
+scipy
+plotly==5.18.0

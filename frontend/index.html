@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overcut Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-main: #FFFFFF;
+            --text-dim: #B3B3B3;
+            --accent-color: #1E41FF; /* Default RBR */
+            --font-main: 'Inter', sans-serif;
+            --font-mono: 'Roboto Mono', monospace;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        #main-container {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 250px 1fr 300px;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        /* Widgets */
+        .widget {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid transparent;
+            transition: border-color 0.3s ease;
+        }
+        
+        .widget:hover {
+            border-color: var(--accent-color);
+        }
+
+        h1, h2, h3 { margin: 0 0 10px 0; }
+        .mono { font-family: var(--font-mono); }
+
+        /* Commander Bar */
+        #commander-container {
+            height: 50px;
+            background: #1E1E1E;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            border: 1px solid #333;
+        }
+
+        #commander-input {
+            background: transparent;
+            border: none;
+            color: white;
+            width: 100%;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            outline: none;
+        }
+        
+        #commander-input::placeholder {
+            color: #555;
+        }
+
+        /* Dynamic Elements */
+        .team-glow {
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+        
+        .value-large {
+            font-size: 32px;
+            font-weight: 700;
+        }
+
+        #log-output {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 5px;
+        }
+    </style>
+    <!-- QWebChannel is injected by QtWebEngine mostly, but we can load it if needed. 
+         For this prototype, we'll assume injection or local load. Specifying empty script for now. -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+
+    <div id="main-container">
+        <!-- Left Panel: Session Info -->
+        <div class="widget">
+            <h3>SESSION</h3>
+            <div class="mono" id="session-name">FP2 - MONZA</div>
+            <br>
+            <h3>DRIVER</h3>
+            <div class="value-large" id="driver-name">VER</div>
+        </div>
+
+        <!-- Center Panel: Visualization -->
+        <div class="widget" id="viz-container">
+            <h3>TELEMETRY</h3>
+            <div id="chart-placeholder" style="height: 200px; display: flex; align-items: center; justify-content: center; border: 1px dashed #333;">
+                Chart Area (QWebChannel Ready)
+            </div>
+        </div>
+
+        <!-- Right Panel: Times -->
+        <div class="widget">
+            <h3>LAP TIMES</h3>
+            <div class="mono">
+                <div>LAP 5: 1:21.432 <span style="color: #B15DFF;">(P)</span></div>
+                <div>LAP 4: 1:22.105</div>
+                <div>LAP 3: 1:21.900</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Commander -->
+    <div id="commander-container">
+        <span style="margin-right: 10px; color: var(--accent-color);">>_</span>
+        <input type="text" id="commander-input" placeholder="Type a command (e.g. 'Compare VER and HAM lap 5')..." autocomplete="off">
+    </div>
+    <div id="log-output"></div>
+
+    <script>
+        // Init QWebChannel
+        var backendBridge = null;
+        
+        window.onload = function() {
+            if (typeof qt != 'undefined') {
+                new QWebChannel(qt.webChannelTransport, function(channel) {
+                    backendBridge = channel.objects.bridge;
+                    log("Connected to Python Backend.");
+                });
+            } else {
+                log("Qt WebChannel not found (Running in browser mode?)");
+            }
+
+            // Command Listener
+            const input = document.getElementById('commander-input');
+            input.addEventListener('keypress', function (e) {
+                if (e.key === 'Enter') {
+                    const cmd = input.value;
+                    log("Command sent: " + cmd);
+                    if (backendBridge) {
+                        backendBridge.process_command(cmd);
+                    }
+                    input.value = '';
+                }
+            });
+        };
+
+        function log(msg) {
+            const el = document.getElementById('log-output');
+            el.innerText = "> " + msg;
+        }
+
+        // Exposed function for Python to call
+        function updateDriverTheme(color, driverCode) {
+            document.documentElement.style.setProperty('--accent-color', color);
+            document.getElementById('driver-name').innerText = driverCode;
+        }
+        
+        function updateTelem(data) {
+             console.log("Telemetry received:", data);
+        }
+    </script>
+</body>
+</html>

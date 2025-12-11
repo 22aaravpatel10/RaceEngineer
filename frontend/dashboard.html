@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Overcut</title>
+    <!-- Plotly via CDN -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <style>
+        :root {
+            --bg-body: #000000;
+            --bg-card: #1C1C1E;
+            --text-primary: #FFFFFF;
+            --text-secondary: #8E8E93;
+            --accent-blue: #0A84FF;
+            --accent-red: #FF3B30;
+            /* Apple System Red */
+            --radius: 18px;
+            --font-stack: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+            --gap: 16px;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-primary);
+            font-family: var(--font-stack);
+            margin: 0;
+            padding: 20px;
+            /* Outer padding */
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- Dynamic Island --- */
+        #dynamic-island {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 35px;
+            background: #2C2C2E;
+            /* Lighter grey for visibility on black */
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+            -webkit-app-region: drag;
+            /* Allow dragging from island too potentially */
+        }
+
+        #dynamic-island.red-flag {
+            background: var(--accent-red);
+            animation: pulse-red 2s infinite;
+        }
+
+        @keyframes pulse-red {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(255, 59, 48, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
+            }
+        }
+
+        /* --- Window Controls (macOS Style) --- */
+        #window-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 8px;
+            z-index: 1001;
+        }
+
+        .window-btn {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            opacity: 0.8;
+        }
+
+        .window-btn:hover {
+            opacity: 1;
+        }
+
+        #btn-minimize {
+            background: #FFBD2E;
+            /* Yellow */
+        }
+
+        #btn-close {
+            background: #FF5F56;
+            /* Red */
+        }
+
+        /* --- Bento Grid --- */
+        #bento-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            grid-template-rows: 1fr 60px;
+            /* Main content + Commander */
+            gap: var(--gap);
+            flex: 1;
+            margin-top: 40px;
+            /* Space for Island */
+        }
+
+        .bento-card {
+            background-color: var(--bg-card);
+            border-radius: var(--radius);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+            /* Subtle depth */
+        }
+
+        /* --- Driver List (Left Column) --- */
+        #driver-list-card {
+            grid-row: 1 / -1;
+            /* Span full height */
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .driver-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .driver-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .driver-code {
+            font-weight: 700;
+            font-size: 15px;
+            width: 45px;
+        }
+
+        .driver-name {
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .indicator {
+            width: 4px;
+            height: 24px;
+            border-radius: 2px;
+            margin-right: 12px;
+        }
+
+        /* --- Visualization (Main Area) --- */
+        #viz-card {
+            grid-row: 1 / 2;
+            position: relative;
+        }
+
+        /* Tabs styled as specific Apple-like segmented control */
+        #segmented-control {
+            display: inline-flex;
+            background: rgba(118, 118, 128, 0.24);
+            border-radius: 9px;
+            padding: 2px;
+            margin-bottom: 10px;
+            align-self: flex-start;
+        }
+
+        .segment {
+            padding: 4px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 7px;
+            cursor: pointer;
+            color: var(--text-primary);
+        }
+
+        .segment.active {
+            background: #636366;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+        }
+
+        #chart-area {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* --- Commander Input (Bottom Right) --- */
+        #commander-card {
+            grid-row: 2 / 3;
+            grid-column: 2 / 3;
+            padding: 0 20px;
+            /* Reduce padding for input strip feel */
+            justify-content: center;
+        }
+
+        #commander-input {
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+            /* Keep mono for code feel */
+            font-size: 16px;
+            width: 100%;
+            outline: none;
+        }
+
+        #commander-input::placeholder {
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Dynamic Island -->
+    <div id="dynamic-island">
+        Q3 - 04:21
+    </div>
+
+    <!-- Window Controls -->
+    <div id="window-controls">
+        <button class="window-btn" id="btn-minimize" title="Minimize"></button>
+        <button class="window-btn" id="btn-close" title="Close"></button>
+    </div>
+
+    <!-- Bento Grid -->
+    <div id="bento-grid">
+
+        <!-- Region 1: Driver List -->
+        <div class="bento-card" id="driver-list-card">
+            <h2>Grid</h2>
+            <div id="driver-list-container" style="overflow-y: auto; flex: 1;">
+                <!-- Dynamic list will be populated by JS -->
+                <div style="color: var(--text-secondary); padding: 20px; text-align: center;">Loading 2025 Grid...</div>
+            </div>
+        </div>
+
+        <!-- Region 2: Viz Panel -->
+        <div class="bento-card" id="viz-card">
+            <div id="segmented-control">
+                <div class="segment active">Telemetry</div>
+                <div class="segment">Map</div>
+                <div class="segment">Analysis</div>
+            </div>
+
+            <div id="chart-area"></div>
+        </div>
+
+        <!-- Region 3: Commander -->
+        <div class="bento-card" id="commander-card">
+            <div style="display:flex; align-items:center;">
+                <span style="color:var(--accent-blue); margin-right:12px; font-weight:bold;">>_</span>
+                <input type="text" id="commander-input" placeholder="Ask Overcut..." autocomplete="off">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Init
+        var backend = null;
+        window.onload = function () {
+            if (typeof qt != 'undefined') {
+                new QWebChannel(qt.webChannelTransport, function (channel) {
+                    backend = channel.objects.bridge;
+                    console.log("Bridge connected. Starting simulation...");
+
+                    // Tell Python we are ready to start the Sim
+                    backend.start_simulation();
+                });
+            }
+
+            // Command Logic
+            const cmd = document.getElementById('commander-input');
+            cmd.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    if (backend) backend.process_command(cmd.value);
+                    cmd.value = '';
+                }
+            });
+
+            // Initialize Empty Plot
+            Plotly.newPlot('chart-area', [], layout_template);
+
+            // Window Controls
+            document.getElementById('btn-minimize').onclick = () => {
+                if (backend) backend.minimize_window();
+            };
+            document.getElementById('btn-close').onclick = () => {
+                if (backend) backend.close_window();
+            };
+        };
+
+        // --- Minimalist Plotly Config ---
+        const layout_template = {
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            font: {
+                family: '-apple-system, sans-serif',
+                color: '#8E8E93'
+            },
+            margin: { t: 20, r: 40, l: 40, b: 30 },
+            showlegend: true,
+            legend: {
+                x: 0, y: 1,
+                bgcolor: 'rgba(0,0,0,0)',
+                font: { color: '#FFF', size: 12 }
+            },
+            xaxis: {
+                showgrid: false,
+                zeroline: true,
+                zerolinecolor: '#333'
+            },
+            yaxis: {
+                showgrid: false,
+                zeroline: true,
+                zerolinecolor: '#333'
+            },
+            hovermode: 'x unified' // Spike lines enabled by default in unified
+        };
+
+        // Renderer
+        function renderChart(payload) {
+            if (payload.type === 'comparison') {
+                const trace1 = {
+                    x: payload.axis,
+                    y: payload.drivers[payload.meta.d1],
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: payload.meta.d1,
+                    line: { color: '#1E41FF', width: 2 }, // Thinner line
+                    fill: 'none'
+                };
+
+                const trace2 = {
+                    x: payload.axis,
+                    y: payload.drivers[payload.meta.d2],
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: payload.meta.d2,
+                    line: { color: '#FF2800', width: 2 }
+                };
+
+                // Delta (Dotted)
+                const traceDelta = {
+                    x: payload.axis,
+                    y: payload.delta,
+                    yaxis: 'y2',
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: 'Delta',
+                    line: { color: '#FFF', width: 1, dash: 'dot' },
+                    opacity: 0.8
+                };
+
+                const layout = JSON.parse(JSON.stringify(layout_template)); // Deep copy
+                layout.yaxis2 = {
+                    overlaying: 'y',
+                    side: 'right',
+                    showgrid: false,
+                    title: 'Delta'
+                };
+
+                // Enable Spike Lines explicitly
+                layout.xaxis.showspikes = true;
+                layout.xaxis.spikemode = 'across';
+                layout.xaxis.spikedash = 'dot';
+                layout.xaxis.spikecolor = '#FFF';
+                layout.xaxis.spikethickness = 1;
+
+                Plotly.newPlot('chart-area', [trace1, trace2, traceDelta], layout, { displayModeBar: false });
+            }
+        }
+
+        // Dynamic Island Demo
+        function setStatusRedFlag() {
+            const island = document.getElementById('dynamic-island');
+            island.classList.add('red-flag');
+            island.innerText = 'RED FLAG';
+        }
+
+        // Expose to Python
+        window.setStatusRedFlag = setStatusRedFlag;
+
+        function updateSessionStatus(payload) {
+            if (payload.type === 'status') {
+                const island = document.getElementById('dynamic-island');
+                island.innerText = payload.text;
+                if (payload.flag === 'RED') {
+                    island.classList.add('red-flag');
+                } else {
+                    island.classList.remove('red-flag');
+                }
+            }
+        }
+        window.updateSessionStatus = updateSessionStatus;
+
+        // Dynamic Driver List Population
+        function updateDriverList(drivers) {
+            const container = document.getElementById('driver-list-container');
+            container.innerHTML = ''; // Clear loading state
+
+            drivers.forEach(driver => {
+                // Create the Card
+                const card = document.createElement('div');
+                card.className = 'driver-item';
+                card.onclick = () => selectDriver(driver.id, driver.color);
+
+                // Indicator
+                const indicator = document.createElement('div');
+                indicator.className = 'indicator';
+                indicator.style.background = driver.color;
+                card.appendChild(indicator);
+
+                // Driver Code
+                const code = document.createElement('span');
+                code.className = 'driver-code';
+                code.innerText = driver.id;
+                card.appendChild(code);
+
+                // Team Name
+                const team = document.createElement('span');
+                team.className = 'driver-name';
+                team.innerText = driver.team;
+                card.appendChild(team);
+
+                // Lap Time (Optional)
+                const time = document.createElement('span');
+                time.className = 'driver-name';
+                time.style.marginLeft = 'auto';
+                time.innerText = driver.lap_time ? driver.lap_time.substring(0, 8) : '';
+                card.appendChild(time);
+
+                container.appendChild(card);
+            });
+        }
+        window.updateDriverList = updateDriverList;
+
+        // Function to call Python when clicked
+        function selectDriver(driverId, color) {
+            console.log("Driver selected:", driverId);
+            // 1. Change UI Theme immediately
+            document.documentElement.style.setProperty('--accent-blue', color);
+
+            // 2. Call Python
+            if (backend) {
+                backend.driver_selected(driverId);
+            }
+        }
+
+        // Render Single Driver Telemetry
+        function renderTelemetry(telem) {
+            console.log("Rendering telemetry for", telem.driver);
+
+            const traceSpeed = {
+                x: telem.distance,
+                y: telem.speed,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Speed (km/h)',
+                line: { color: '#0A84FF', width: 2 }
+            };
+
+            const traceThrottle = {
+                x: telem.distance,
+                y: telem.throttle,
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Throttle %',
+                yaxis: 'y2',
+                line: { color: '#30D158', width: 1.5 },
+                opacity: 0.7
+            };
+
+            const layout = JSON.parse(JSON.stringify(layout_template));
+            layout.title = { text: telem.driver + ' Telemetry', font: { color: '#FFF' } };
+            layout.yaxis.title = 'Speed';
+            layout.yaxis2 = {
+                overlaying: 'y',
+                side: 'right',
+                showgrid: false,
+                title: 'Throttle'
+            };
+            layout.xaxis.title = 'Distance (m)';
+            layout.xaxis.showspikes = true;
+            layout.xaxis.spikemode = 'across';
+            layout.xaxis.spikedash = 'dot';
+            layout.xaxis.spikecolor = '#FFF';
+
+            Plotly.newPlot('chart-area', [traceSpeed, traceThrottle], layout, { displayModeBar: false });
+        }
+        window.renderTelemetry = renderTelemetry;
+
+    </script>
+</body>
+
+</html>
