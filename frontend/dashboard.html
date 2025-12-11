@@ -450,11 +450,87 @@
             document.getElementById('status-text').innerText = `${data.meta.d1} vs ${data.meta.d2}`;
         }
 
+        // --- F-DATA ANALYSIS: Pro Telemetry with Track DNA ---
+        function renderTelemetry(telem) {
+            if (typeof Plotly === 'undefined') return;
+
+            // 1. Prepare Track DNA Shapes (Vertical Lines & Braking Zones)
+            const shapes = [];
+            const annotations = [];
+
+            // A. Add Corner Lines (Vertical Dashed Lines)
+            if (telem.corners && telem.corners.length > 0) {
+                telem.corners.forEach(corner => {
+                    // Vertical Line
+                    shapes.push({
+                        type: 'line',
+                        x0: corner.distance, x1: corner.distance,
+                        y0: 0, y1: 1, xref: 'x', yref: 'paper',
+                        line: { color: '#444', width: 1, dash: 'dot' }
+                    });
+                    // Label (T1, T2...)
+                    annotations.push({
+                        x: corner.distance,
+                        y: 1.05,
+                        xref: 'x', yref: 'paper',
+                        text: corner.number,
+                        showarrow: false,
+                        font: { color: '#8E8E93', size: 10 }
+                    });
+                });
+            }
+
+            // B. Add Braking Zones (Red Highlights)
+            if (telem.braking_zones && telem.braking_zones.length > 0) {
+                telem.braking_zones.forEach(zone => {
+                    shapes.push({
+                        type: 'rect',
+                        x0: zone[0], x1: zone[1],
+                        y0: 0, y1: 1, xref: 'x', yref: 'paper',
+                        fillcolor: 'rgba(255, 59, 48, 0.1)',
+                        line: { width: 0 }
+                    });
+                });
+            }
+
+            // 2. Data Traces
+            const traceSpeed = {
+                x: telem.distance, y: telem.speed,
+                type: 'scatter', mode: 'lines', name: 'Speed',
+                line: { color: telem.color, width: 2.5 }
+            };
+
+            const traceThrottle = {
+                x: telem.distance, y: telem.throttle,
+                type: 'scatter', mode: 'lines', name: 'Throttle',
+                yaxis: 'y2',
+                line: { color: '#30D158', width: 1.5 },
+                fill: 'tozeroy', opacity: 0.2
+            };
+
+            // 3. Layout with Shapes
+            const layout = JSON.parse(JSON.stringify(layout_base));
+            layout.yaxis2 = { overlaying: 'y', side: 'right', showgrid: false, range: [0, 110], visible: false };
+            layout.title = { text: telem.driver + " Analysis", font: { color: '#FFF', size: 14 } };
+            layout.yaxis.title = { text: "Speed (km/h)", font: { color: '#8E8E93' } };
+            layout.xaxis.title = { text: "Distance (m)", font: { color: '#8E8E93' } };
+
+            // Inject Track DNA
+            layout.shapes = shapes;
+            layout.annotations = annotations;
+            layout.margin = { t: 50, r: 20, l: 50, b: 40 };
+            layout.hovermode = 'x unified';
+
+            Plotly.newPlot('chart-area', [traceSpeed, traceThrottle], layout, { displayModeBar: false });
+            document.getElementById('status-text').innerText = telem.driver + " Telemetry";
+        }
+
         // Global Exports
         window.updateDriverList = updateDriverList;
         window.updateSessionStatus = updateSessionStatus;
         window.renderAnalysis = renderAnalysis;
         window.renderChart = renderChart;
+        window.renderTelemetry = renderTelemetry;
 
         // Command Input
         document.getElementById('cmd-input').addEventListener('keypress', (e) => {

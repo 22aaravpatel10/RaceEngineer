@@ -222,6 +222,87 @@ class RaceControlWorker(QObject):
             import traceback
             traceback.print_exc()
 
+    @pyqtSlot(str)
+    def fetch_telemetry(self, driver_id):
+        """Fetch detailed telemetry with Track DNA (corners, braking zones)"""
+        if self.laps is None:
+            return
+
+        try:
+            # 1. Resolve Driver
+            target_id = driver_id
+            team_color = "#FFFFFF"
+            if self.current_map and driver_id in self.current_map:
+                target_id = self.current_map[driver_id]['source']
+                team_name = self.current_map[driver_id]['team']
+                team_color = config.TEAM_COLORS.get(team_name, "#FFFFFF")
+            else:
+                try:
+                    team_name = self.laps.pick_driver(driver_id)['Team'].iloc[0]
+                    team_color = fastf1.plotting.team_color(team_name)
+                except:
+                    team_color = "#0A84FF"
+
+            # 2. Fetch Data
+            lap = self.laps.pick_driver(target_id).pick_fastest()
+            if lap is None:
+                return
+            car = lap.get_car_data().add_distance()
+            
+            # --- TRACK DNA EXTRACTION ---
+            # Get Corner Locations from Circuit Info
+            corners = []
+            try:
+                circuit_info = self.session.get_circuit_info()
+                if circuit_info is not None:
+                    for _, corner in circuit_info.corners.iterrows():
+                        corners.append({
+                            "number": f"T{int(corner['Number'])}",
+                            "distance": float(corner['Distance'])
+                        })
+            except Exception as e:
+                print(f"Circuit info not available: {e}")
+
+            # Calculate Braking Zones
+            # Logic: Brake is ON (>0) and Throttle is low (<10)
+            car['Braking'] = (car['Brake'] > 0) & (car['Throttle'] < 10)
+            braking_zones = []
+            
+            is_braking = False
+            start_dist = 0
+            for i, row in car.iterrows():
+                if row['Braking'] and not is_braking:
+                    is_braking = True
+                    start_dist = row['Distance']
+                elif not row['Braking'] and is_braking:
+                    is_braking = False
+                    # Only count significant braking zones (>10m)
+                    if row['Distance'] - start_dist > 10:
+                        braking_zones.append([float(start_dist), float(row['Distance'])])
+
+            # 3. Construct Payload
+            raw_data = {
+                "driver": driver_id,
+                "color": team_color,
+                "distance": car['Distance'],
+                "speed": car['Speed'],
+                "throttle": car['Throttle'],
+                "brake": car['Brake'].astype(int),
+                "rpm": car['RPM'],
+                "gear": car['nGear'],
+                # Track DNA
+                "corners": corners,
+                "braking_zones": braking_zones
+            }
+            
+            clean_data = self.clean_for_json(raw_data)
+            self.analysis_ready.emit(clean_data)
+            
+        except Exception as e:
+            print(f"Telem Error ({driver_id}): {e}")
+            import traceback
+            traceback.print_exc()
+
     @pyqtSlot(str, str)
     def align_drivers(self, d1, d2):
         """Ghost Car Alignment for Compare command"""
@@ -262,3 +343,4 @@ class RaceControlWorker(QObject):
             
         except Exception as e:
             print(f"Alignment Error: {e}")
+
