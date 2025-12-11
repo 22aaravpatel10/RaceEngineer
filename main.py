@@ -10,6 +10,7 @@ from PyQt6.QtCore import QObject, pyqtSlot, QUrl, Qt, QThread, pyqtSignal
 
 from backend.data_manager import RaceControlWorker, OpenF1Client
 
+
 class SessionSelectDialog(QDialog):
     def __init__(self):
         super().__init__()
@@ -36,7 +37,7 @@ class SessionSelectDialog(QDialog):
         
         # 1. Year Selector
         self.year_combo = QComboBox()
-        self.year_combo.addItems(["2025", "2024", "2023"])  # UPDATED with 2025
+        self.year_combo.addItems(["2025", "2024", "2023"])
         self.year_combo.currentTextChanged.connect(self.load_sessions)
         layout.addWidget(self.year_combo)
         
@@ -54,12 +55,11 @@ class SessionSelectDialog(QDialog):
         btn.clicked.connect(self.accept_selection)
         layout.addWidget(btn)
         
-        self.load_sessions("2025")  # Default to 2025
+        self.load_sessions("2025")
 
     def load_sessions(self, year):
         self.session_combo.clear()
         self.session_combo.addItem("Fetching OpenF1...", None)
-        # Using the backend helper directly for UI speed
         sessions = OpenF1Client.get_sessions(year=int(year))
         
         self.session_combo.clear()
@@ -81,8 +81,11 @@ class SessionSelectDialog(QDialog):
             }
             self.accept()
 
+
 class Bridge(QObject):
     request_telemetry = pyqtSignal(str)
+    request_analysis_bridge = pyqtSignal(str, str)  # driver, mode
+    command_received = pyqtSignal(str)
     
     def __init__(self, view):
         super().__init__()
@@ -90,7 +93,18 @@ class Bridge(QObject):
 
     @pyqtSlot(str)
     def driver_selected(self, driver_id):
-        self.request_telemetry.emit(driver_id)
+        """Legacy support - redirect to QUALI mode"""
+        self.request_analysis_bridge.emit(driver_id, 'QUALI')
+
+    @pyqtSlot(str, str)
+    def driver_mode_selected(self, driver_id, mode):
+        """Called when user clicks a driver OR changes the mode dropdown"""
+        print(f"Requesting {mode} for {driver_id}")
+        self.request_analysis_bridge.emit(driver_id, mode)
+
+    @pyqtSlot(str)
+    def process_command(self, cmd):
+        self.command_received.emit(cmd)
         
     @pyqtSlot()
     def close_window(self):
@@ -108,8 +122,10 @@ class Bridge(QObject):
         else:
             window.showMaximized()
 
+
 class OvercutWindow(QMainWindow):
     request_load = pyqtSignal(str, str, str)
+    request_alignment = pyqtSignal(str, str)
 
     def __init__(self, session_data):
         super().__init__()
@@ -126,7 +142,6 @@ class OvercutWindow(QMainWindow):
         self.browser = QWebEngineView()
         self.browser.setStyleSheet("background: transparent;")
         
-        # LOAD LOCAL FILE
         html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "frontend/dashboard.html"))
         self.browser.setUrl(QUrl.fromLocalFile(html_path))
         
@@ -136,17 +151,23 @@ class OvercutWindow(QMainWindow):
         self.bridge = Bridge(self.browser)
         self.channel.registerObject("bridge", self.bridge)
         self.browser.page().setWebChannel(self.channel)
+        
+        self.bridge.command_received.connect(self.handle_command)
 
     def setup_backend(self):
         self.thread = QThread()
         self.worker = RaceControlWorker()
         self.worker.moveToThread(self.thread)
         
+        # Connect signals
         self.request_load.connect(self.worker.load_session)
-        self.bridge.request_telemetry.connect(self.worker.fetch_telemetry)
+        self.bridge.request_analysis_bridge.connect(self.worker.request_analysis)
+        self.request_alignment.connect(self.worker.align_drivers)
         
+        # Worker responses
         self.worker.initialized.connect(self.on_ready)
-        self.worker.telemetry_ready.connect(self.send_telemetry)
+        self.worker.analysis_ready.connect(self.send_analysis_to_js)
+        self.worker.comparison_ready.connect(self.send_comparison_to_js)
         
         self.thread.start()
         self.request_load.emit(
@@ -160,8 +181,18 @@ class OvercutWindow(QMainWindow):
         title = f"{self.session_data['country'].upper()} {self.session_data['year']}"
         self.browser.page().runJavaScript(f'updateSessionStatus({{"text":"{title}", "flag":"GREEN"}});')
 
-    def send_telemetry(self, data):
-        self.browser.page().runJavaScript(f"renderTelemetry({json.dumps(data)});")
+    def send_analysis_to_js(self, data):
+        self.browser.page().runJavaScript(f"renderAnalysis({json.dumps(data)});")
+
+    def send_comparison_to_js(self, data):
+        self.browser.page().runJavaScript(f"renderChart({json.dumps(data)});")
+
+    def handle_command(self, command: str):
+        print(f"Command: {command}")
+        match = re.search(r"compare (\w+) and (\w+)", command, re.IGNORECASE)
+        if match:
+            d1, d2 = match.groups()
+            self.request_alignment.emit(d1.upper(), d2.upper())
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and event.position().y() < 50:
@@ -176,17 +207,17 @@ class OvercutWindow(QMainWindow):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
 
+
 if __name__ == "__main__":
-    if not os.path.exists('f1_cache'): os.makedirs('f1_cache')
+    if not os.path.exists('f1_cache'):
+        os.makedirs('f1_cache')
     import fastf1
     fastf1.Cache.enable_cache('f1_cache')
 
     app = QApplication(sys.argv)
     
-    # 1. Select Session
     selector = SessionSelectDialog()
     if selector.exec():
-        # 2. Run Main Window
         window = OvercutWindow(selector.selected_session)
         window.show()
         sys.exit(app.exec())

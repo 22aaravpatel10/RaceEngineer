@@ -7,226 +7,217 @@ from scipy.interpolate import interp1d
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 import config
 
+# --- HELPER: OpenF1 Client ---
 class OpenF1Client:
-    """
-    Direct client for OpenF1.org to fetch Session Lists fast.
-    """
     BASE_URL = "https://api.openf1.org/v1"
-
+    
     @staticmethod
     def get_sessions(year=2024):
         try:
             url = f"{OpenF1Client.BASE_URL}/sessions?year={year}"
-            print(f"Fetching sessions from: {url}")
             response = requests.get(url, timeout=10)
-            response.raise_for_status()
             data = response.json()
-            
-            # Filter for meaningful sessions (Quali/Race) to reduce noise
-            sessions = [
-                s for s in data 
-                if s.get('session_name') in ['Qualifying', 'Race', 'Sprint']
-            ]
-            # Sort by date (newest first)
-            sessions.sort(key=lambda x: x.get('date_start', ''), reverse=True)
-            return sessions
+            # Filter distinct meaningful sessions
+            seen = set()
+            clean = []
+            for s in data:
+                uid = f"{s.get('country_name', '')}-{s.get('session_name', '')}"
+                if uid not in seen and s.get('session_name') in ['Qualifying', 'Race', 'Practice 1', 'Practice 2', 'Practice 3', 'Sprint']:
+                    seen.add(uid)
+                    clean.append(s)
+            clean.sort(key=lambda x: x.get('date_start', ''), reverse=True)
+            return clean
         except Exception as e:
             print(f"OpenF1 Error: {e}")
             return []
 
 
+# --- MAIN WORKER ---
 class RaceControlWorker(QObject):
-    """
-    Unified backend worker running on QThread.
-    Handles session loading, telemetry fetch, and Ghost Car alignment.
-    """
     initialized = pyqtSignal(list)
     telemetry_ready = pyqtSignal(dict)
+    analysis_ready = pyqtSignal(dict)  # New Signal for Mode Data
     comparison_ready = pyqtSignal(dict)
     
     def __init__(self):
         super().__init__()
         self.session = None
         self.laps = None
-        self.current_map = None  # If None, we use Real Drivers
+        self.current_map = None
 
-    @staticmethod
-    def clean_for_json(data_dict):
-        """
-        CRITICAL FIX: Converts numpy types to Python native types.
-        Replaces NaN with None so JSON doesn't break.
-        """
-        clean = {}
-        for key, value in data_dict.items():
-            if isinstance(value, (np.ndarray, pd.Series)):
-                # Convert to list and handle NaNs
-                arr = value.tolist() if hasattr(value, 'tolist') else list(value)
-                clean[key] = [
-                    None if (isinstance(x, float) and (np.isnan(x) if not isinstance(x, type(None)) else False)) 
-                    else (float(x) if isinstance(x, (np.floating, np.integer)) else x)
-                    for x in arr
-                ]
-            elif isinstance(value, list):
-                clean[key] = [
-                    None if (isinstance(x, float) and np.isnan(x)) 
-                    else (float(x) if isinstance(x, (np.floating, np.integer)) else x)
-                    for x in value
-                ]
-            elif isinstance(value, (np.floating, np.integer)):
-                clean[key] = float(value)
-            else:
-                clean[key] = value
-        return clean
+    def clean_for_json(self, data):
+        """Sanitizes numpy/NaNs for JSON safety"""
+        if isinstance(data, dict):
+            return {k: self.clean_for_json(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self.clean_for_json(i) for i in data]
+        elif isinstance(data, (np.ndarray, pd.Series)):
+            return [None if pd.isna(x) else (float(x) if isinstance(x, (np.floating, np.integer)) else x) for x in data.tolist()]
+        elif isinstance(data, (np.floating, np.integer)):
+            return float(data)
+        elif pd.isna(data):
+            return None
+        return data
 
     @pyqtSlot(str, str, str)
     def load_session(self, year, country, session_type):
-        """
-        Loads a specific session via FastF1.
-        session_type: 'Simulation' or 'Real'
-        """
-        print(f"RaceControl: Loading {year} {country} ({session_type})...")
+        print(f"RaceControl: Loading {year} {country} [{session_type}]...")
         try:
-            # 1. Load Data
+            # 1. Load Session
             self.session = fastf1.get_session(int(year), country, 'Q')
             self.session.load()
             self.laps = self.session.laps
             
-            # 2. Determine Mode
-            ui_drivers = []
+            # 2. Apply "Simulation" Map if requested
+            self.current_map = config.GRID_2025 if session_type == 'Simulation' else None
             
-            if session_type == 'Simulation':
-                # --- 2025 SIMULATION MODE ---
-                self.current_map = config.GRID_2025
-                for drv_id, info in self.current_map.items():
-                    source = info['source']
-                    if source in self.laps['Driver'].unique():
-                        fastest = self.laps.pick_driver(source).pick_fastest()
-                        if fastest is not None and pd.notna(fastest['LapTime']):
-                            lap_time = str(fastest['LapTime']).split('days')[-1].strip()
-                            if '.' in lap_time:
-                                lap_time = lap_time[:-3]
-                            ui_drivers.append({
-                                "id": drv_id,
-                                "team": info['team'],
-                                "color": config.TEAM_COLORS.get(info['team'], "#FFF"),
-                                "lap_time": lap_time,
-                                "position": int(fastest['Position']) if pd.notna(fastest['Position']) else 99
-                            })
-            else:
-                # --- REAL HISTORICAL MODE ---
-                self.current_map = None
-                drivers = self.laps['Driver'].unique()
-                for drv in drivers:
+            # 3. Generate Grid List
+            ui_drivers = []
+            drivers_to_scan = self.current_map.keys() if self.current_map else self.laps['Driver'].unique()
+            
+            for drv_id in drivers_to_scan:
+                source_id = self.current_map[drv_id]['source'] if self.current_map else drv_id
+                team_color = "#FFFFFF"
+                team_name = "F1 Team"
+                
+                # Get Color
+                if self.current_map:
+                    team_name = self.current_map[drv_id]['team']
+                    team_color = config.TEAM_COLORS.get(team_name, "#FFF")
+                else:
                     try:
-                        drv_laps = self.laps.pick_driver(drv)
-                        team = drv_laps['Team'].iloc[0] if len(drv_laps) > 0 else "Unknown"
-                        try:
-                            color = fastf1.plotting.team_color(team)
-                        except:
-                            color = "#FFFFFF"
+                        team_name = self.laps.pick_driver(source_id)['Team'].iloc[0]
+                        team_color = fastf1.plotting.team_color(team_name)
                     except:
-                        color = "#FFFFFF"
-                        team = "Unknown"
+                        pass
 
-                    fastest = self.laps.pick_driver(drv).pick_fastest()
+                # Get Best Lap
+                try:
+                    d_laps = self.laps.pick_driver(source_id)
+                    fastest = d_laps.pick_fastest()
                     if fastest is not None and pd.notna(fastest['LapTime']):
                         lap_time = str(fastest['LapTime']).split('days')[-1].strip()
                         if '.' in lap_time:
                             lap_time = lap_time[:-3]
-                        pos = int(fastest['Position']) if pd.notna(fastest['Position']) else 99
                         ui_drivers.append({
-                            "id": drv,
-                            "team": team,
-                            "color": color,
+                            "id": drv_id,
+                            "team": team_name,
+                            "color": team_color,
                             "lap_time": lap_time,
-                            "position": pos
+                            "position": int(fastest['Position']) if pd.notna(fastest['Position']) else 99
                         })
+                except:
+                    pass
 
-            # Sort and Send
             ui_drivers.sort(key=lambda x: x['position'])
             self.initialized.emit(ui_drivers)
             print(f"Session Ready: {len(ui_drivers)} drivers")
 
         except Exception as e:
-            print(f"Load Error: {e}")
+            print(f"Load Failed: {e}")
+            import traceback
+            traceback.print_exc()
+
+    # --- THE ALGORITHM ENGINE ---
+    @pyqtSlot(str, str)
+    def request_analysis(self, driver_id, mode):
+        """
+        Generates specific charts based on Session Mode.
+        mode: 'PRACTICE', 'QUALI', 'RACE'
+        """
+        if self.laps is None:
+            return
+        
+        try:
+            # 1. Resolve Source Driver
+            source_id = driver_id
+            team_color = "#0A84FF"
+            if self.current_map and driver_id in self.current_map:
+                source_id = self.current_map[driver_id]['source']
+                team_color = config.TEAM_COLORS.get(self.current_map[driver_id]['team'], "#FFF")
+            else:
+                try:
+                    team = self.laps.pick_driver(source_id)['Team'].iloc[0]
+                    team_color = fastf1.plotting.team_color(team)
+                except:
+                    pass
+            
+            # 2. Get All Laps for Driver
+            d_laps = self.laps.pick_driver(source_id).copy()
+            
+            # 3. RUN ALGORITHM: Classify Laps
+            fastest = d_laps.pick_fastest()
+            if fastest is None:
+                return
+                
+            pb_time = fastest['LapTime']
+            
+            # Logic Mask
+            d_laps['LapType'] = 'SLOW'
+            # 107% Rule for Push
+            push_threshold = pb_time * 1.07
+            d_laps.loc[d_laps['LapTime'] < push_threshold, 'LapType'] = 'PUSH'
+            d_laps.loc[~pd.isnull(d_laps['PitInTime']), 'LapType'] = 'IN'
+            d_laps.loc[~pd.isnull(d_laps['PitOutTime']), 'LapType'] = 'OUT'
+
+            payload = {}
+
+            # --- MODE 1: PRACTICE (Stint Analysis) ---
+            if mode == 'PRACTICE':
+                stint_data = d_laps[d_laps['LapType'] == 'PUSH']
+                if len(stint_data) == 0:
+                    stint_data = d_laps[d_laps['LapTime'].notna()]
+                    
+                payload = {
+                    "mode": "PRACTICE",
+                    "title": f"{driver_id} Long Run Pace",
+                    "x": stint_data['LapNumber'].tolist(),
+                    "y": stint_data['LapTime'].dt.total_seconds().tolist(),
+                    "color": team_color
+                }
+
+            # --- MODE 2: QUALI (The Perfect Lap) ---
+            elif mode == 'QUALI':
+                car = fastest.get_car_data().add_distance()
+                payload = {
+                    "mode": "QUALI",
+                    "title": f"{driver_id} Qualifying Trace",
+                    "distance": car['Distance'].tolist(),
+                    "speed": car['Speed'].tolist(),
+                    "throttle": car['Throttle'].tolist(),
+                    "gear": car['nGear'].tolist(),
+                    "color": team_color
+                }
+
+            # --- MODE 3: RACE (Gap Evolution) ---
+            elif mode == 'RACE':
+                session_mean = self.laps.pick_fastest()['LapTime'].total_seconds()
+                d_laps_valid = d_laps[d_laps['LapTime'].notna()].copy()
+                d_laps_valid['PaceDelta'] = d_laps_valid['LapTime'].dt.total_seconds() - session_mean
+                d_laps_valid['GapTrend'] = d_laps_valid['PaceDelta'].cumsum()
+                
+                payload = {
+                    "mode": "RACE",
+                    "title": f"{driver_id} Race Pace Trend",
+                    "x": d_laps_valid['LapNumber'].tolist(),
+                    "y": d_laps_valid['GapTrend'].tolist(),
+                    "color": team_color
+                }
+
+            # Clean & Send
+            clean_payload = self.clean_for_json(payload)
+            self.analysis_ready.emit(clean_payload)
+
+        except Exception as e:
+            print(f"Analysis Error: {e}")
             import traceback
             traceback.print_exc()
 
     @pyqtSlot(str)
     def fetch_telemetry(self, driver_id):
-        """Fetch telemetry for a single driver"""
-        if self.laps is None:
-            print("No session loaded")
-            return
-
-        try:
-            # Handle Map vs Real
-            target_id = driver_id
-            team_color = "#0A84FF"
-            
-            if self.current_map and driver_id in self.current_map:
-                target_id = self.current_map[driver_id]['source']
-                team_name = self.current_map[driver_id]['team']
-                team_color = config.TEAM_COLORS.get(team_name, "#FFF")
-            else:
-                # Try to get real team color
-                try:
-                    drv_laps = self.laps.pick_driver(target_id)
-                    team = drv_laps['Team'].iloc[0]
-                    team_color = fastf1.plotting.team_color(team)
-                except:
-                    pass
-            
-            # Fetch telemetry
-            lap = self.laps.pick_driver(target_id).pick_fastest()
-            if lap is None:
-                print(f"No fastest lap for {target_id}")
-                return
-                
-            car = lap.get_car_data().add_distance()
-            
-            # Get position data for track map
-            x_pos = []
-            y_pos = []
-            try:
-                pos = lap.get_pos_data()
-                if pos is not None and len(pos) > 0:
-                    # Interpolate X/Y to match telemetry timestamps
-                    pos['Time_sec'] = pos['Time'].dt.total_seconds()
-                    car['Time_sec'] = car['Time'].dt.total_seconds()
-                    
-                    fx = interp1d(pos['Time_sec'], pos['X'], fill_value="extrapolate")
-                    fy = interp1d(pos['Time_sec'], pos['Y'], fill_value="extrapolate")
-                    
-                    x_pos = fx(car['Time_sec']).tolist()
-                    y_pos = fy(car['Time_sec']).tolist()
-            except Exception as e:
-                print(f"GPS Data not available: {e}")
-            
-            # Prepare Raw Data
-            raw_data = {
-                "driver": driver_id,
-                "color": team_color,
-                "distance": car['Distance'],
-                "speed": car['Speed'],
-                "throttle": car['Throttle'],
-                "brake": car['Brake'].astype(int),
-                "rpm": car['RPM'],
-                "gear": car['nGear'],
-                "x_pos": x_pos,
-                "y_pos": y_pos
-            }
-            
-            # SANITIZE (The Fix for "No Data")
-            clean_data = self.clean_for_json(raw_data)
-            
-            self.telemetry_ready.emit(clean_data)
-            print(f"Telemetry sent for {driver_id}")
-            
-        except Exception as e:
-            print(f"Telem Error ({driver_id}): {e}")
-            import traceback
-            traceback.print_exc()
+        """Fetch telemetry for a single driver (legacy support)"""
+        # Redirect to QUALI mode by default
+        self.request_analysis(driver_id, 'QUALI')
 
     @pyqtSlot(str, str)
     def align_drivers(self, d1, d2):
@@ -235,7 +226,6 @@ class RaceControlWorker(QObject):
             return
         
         try:
-            # Map IDs if in simulation mode
             s1 = self.current_map[d1]['source'] if self.current_map and d1 in self.current_map else d1
             s2 = self.current_map[d2]['source'] if self.current_map and d2 in self.current_map else d2
             
@@ -250,33 +240,21 @@ class RaceControlWorker(QObject):
             
             delta = speed1 - speed2
             
-            # Get colors
             c1 = config.TEAM_COLORS.get(self.current_map[d1]['team'], "#1E41FF") if self.current_map else "#1E41FF"
             c2 = config.TEAM_COLORS.get(self.current_map[d2]['team'], "#FF2800") if self.current_map else "#FF2800"
             
-            raw_payload = {
+            payload = {
                 "type": "comparison",
-                "axis": common_dist,
+                "axis": common_dist.tolist(),
                 "drivers": {
-                    d1: speed1,
-                    d2: speed2
+                    d1: speed1.tolist(),
+                    d2: speed2.tolist()
                 },
-                "delta": delta,
+                "delta": delta.tolist(),
                 "meta": {"d1": d1, "d2": d2, "c1": c1, "c2": c2}
             }
             
-            # Sanitize nested data
-            clean_payload = {
-                "type": "comparison",
-                "axis": self.clean_for_json({"arr": common_dist})["arr"],
-                "drivers": {
-                    d1: self.clean_for_json({"arr": speed1})["arr"],
-                    d2: self.clean_for_json({"arr": speed2})["arr"]
-                },
-                "delta": self.clean_for_json({"arr": delta})["arr"],
-                "meta": {"d1": d1, "d2": d2, "c1": c1, "c2": c2}
-            }
-            
+            clean_payload = self.clean_for_json(payload)
             self.comparison_ready.emit(clean_payload)
             
         except Exception as e:

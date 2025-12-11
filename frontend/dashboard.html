@@ -41,25 +41,6 @@
             -webkit-app-region: drag;
         }
 
-        #dynamic-island {
-            background: #2C2C2E;
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        #status-light {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #FF3B30;
-        }
-
         .window-controls {
             display: flex;
             gap: 8px;
@@ -84,6 +65,51 @@
 
         .btn-max {
             background: #27C93F;
+        }
+
+        /* --- Mode Switcher --- */
+        #mode-switcher {
+            background: #2C2C2E;
+            padding: 4px;
+            border-radius: 20px;
+            display: flex;
+            gap: 4px;
+            -webkit-app-region: no-drag;
+        }
+
+        .mode-btn {
+            padding: 6px 16px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            color: #8E8E93;
+            transition: all 0.2s;
+        }
+
+        .mode-btn.active {
+            background: #48484A;
+            color: #FFF;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        #dynamic-island {
+            background: #2C2C2E;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #status-light {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #FF3B30;
         }
 
         /* --- Layout --- */
@@ -170,25 +196,7 @@
             position: relative;
         }
 
-        #chart-toolbar {
-            padding: 12px;
-            display: flex;
-            gap: 10px;
-            border-bottom: 1px solid #333;
-        }
-
-        select {
-            background: #3A3A3C;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            outline: none;
-            cursor: pointer;
-        }
-
-        #chart-canvas {
+        #chart-area {
             flex: 1;
             width: 100%;
             position: relative;
@@ -224,11 +232,17 @@
             <button class="win-btn btn-min" onclick="winAction('minimize')"></button>
             <button class="win-btn btn-max" onclick="winAction('maximize')"></button>
         </div>
+
+        <div id="mode-switcher">
+            <div class="mode-btn" data-mode="PRACTICE" onclick="setMode('PRACTICE')">FP</div>
+            <div class="mode-btn active" data-mode="QUALI" onclick="setMode('QUALI')">QUALI</div>
+            <div class="mode-btn" data-mode="RACE" onclick="setMode('RACE')">RACE</div>
+        </div>
+
         <div id="dynamic-island">
             <div id="status-light"></div>
             <span id="status-text">System Init...</span>
         </div>
-        <div style="width: 50px;"></div>
     </div>
 
     <div id="main-grid">
@@ -239,18 +253,7 @@
         </div>
 
         <div class="panel" id="viz-panel">
-            <div id="chart-toolbar">
-                <select id="view-selector" onchange="changeView()">
-                    <option value="telemetry">Telemetry Trace</option>
-                    <option value="map_gear">Track Map (Gear)</option>
-                    <option value="map_speed">Track Map (Speed)</option>
-                    <option value="comparison">Ghost Car Comparison</option>
-                </select>
-                <span id="active-driver-label"
-                    style="margin-left: auto; font-size: 13px; color: #8E8E93; align-self: center;">Select a
-                    Driver</span>
-            </div>
-            <div id="chart-canvas"></div>
+            <div id="chart-area"></div>
         </div>
 
         <div class="panel" id="cmd-panel">
@@ -261,8 +264,8 @@
 
     <script>
         let backend = null;
+        let currentMode = 'QUALI';
         let currentDriver = null;
-        let currentData = null;
 
         // --- Init ---
         function initBridge() {
@@ -286,28 +289,33 @@
             if (action === 'maximize') backend.maximize_window();
         }
 
+        // --- Mode Logic ---
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(b => {
+                b.classList.remove('active');
+                if (b.dataset.mode === mode) b.classList.add('active');
+            });
+
+            if (currentDriver && backend) {
+                document.getElementById('status-text').innerText = `Loading ${mode}...`;
+                backend.driver_mode_selected(currentDriver, currentMode);
+            }
+        }
+
         // --- UI Interactions ---
         function selectDriver(id, color, team) {
             currentDriver = id;
             document.documentElement.style.setProperty('--accent-color', color);
-            document.getElementById('active-driver-label').innerText = `${id} | ${team}`;
 
             document.querySelectorAll('.driver-row').forEach(el => el.classList.remove('active'));
-            document.getElementById(`row-${id}`).classList.add('active');
+            const row = document.getElementById(`row-${id}`);
+            if (row) row.classList.add('active');
 
-            requestData();
-        }
-
-        function changeView() {
-            if (currentDriver) requestData();
-        }
-
-        function requestData() {
-            if (!backend || !currentDriver) return;
-            const view = document.getElementById('view-selector').value;
-
-            document.getElementById('status-text').innerText = `Loading ${view}...`;
-            backend.driver_selected(currentDriver);
+            if (backend) {
+                document.getElementById('status-text').innerText = `Loading ${currentMode}...`;
+                backend.driver_mode_selected(id, currentMode);
+            }
         }
 
         // --- Data Handlers ---
@@ -334,76 +342,80 @@
             document.getElementById('status-text').innerText = payload.text;
         }
 
-        function renderTelemetry(data) {
-            currentData = data;
-            const view = document.getElementById('view-selector').value;
-
-            document.getElementById('status-text').innerText = "Rendering...";
-
-            if (view === 'telemetry') drawTelemetryTrace(data);
-            else if (view === 'map_gear') drawTrackMap(data, 'gear');
-            else if (view === 'map_speed') drawTrackMap(data, 'speed');
-
-            document.getElementById('status-text').innerText = "Live";
-        }
-
-        // --- Chart Drawers ---
-        const layout_common = {
+        // --- CHART LAYOUTS ---
+        const layout_base = {
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
             font: { family: '-apple-system', color: '#8E8E93' },
-            margin: { t: 10, r: 10, l: 40, b: 30 },
+            margin: { t: 40, r: 20, l: 50, b: 40 },
             xaxis: { showgrid: false, zeroline: false, color: '#444' },
             yaxis: { showgrid: false, zeroline: false, color: '#444' },
             showlegend: false
         };
 
-        function drawTelemetryTrace(data) {
-            const traceSpeed = {
-                x: data.distance, y: data.speed,
-                type: 'scatter', mode: 'lines',
-                line: { color: data.color, width: 2.5 }
-            };
-            const traceThrottle = {
-                x: data.distance, y: data.throttle,
-                type: 'scatter', mode: 'lines', yaxis: 'y2',
-                line: { color: '#30D158', width: 1 }, fill: 'tozeroy', opacity: 0.2
-            };
+        // --- SMART RENDERER ---
+        function renderAnalysis(data) {
+            console.log("Rendering Mode:", data.mode);
+            const layout = JSON.parse(JSON.stringify(layout_base));
+            layout.title = { text: data.title, font: { color: '#FFF', size: 14 } };
 
-            const layout = JSON.parse(JSON.stringify(layout_common));
-            layout.yaxis2 = { overlaying: 'y', side: 'right', showgrid: false, visible: false };
-            layout.hovermode = 'x unified';
-
-            Plotly.newPlot('chart-canvas', [traceSpeed, traceThrottle], layout, { displayModeBar: false });
-        }
-
-        function drawTrackMap(data, mode) {
-            if (!data.x_pos || data.x_pos.length === 0) {
-                document.getElementById('status-text').innerText = "No GPS Data";
-                return;
+            // 1. PRACTICE MODE (Scatter Plot of Laps)
+            if (data.mode === 'PRACTICE') {
+                const trace = {
+                    x: data.x, y: data.y,
+                    mode: 'lines+markers',
+                    type: 'scatter',
+                    line: { color: data.color || '#0A84FF', shape: 'spline', width: 2 },
+                    marker: { size: 6, color: '#FFF' }
+                };
+                layout.yaxis.title = { text: "Lap Time (s)", font: { color: '#8E8E93' } };
+                layout.xaxis.title = { text: "Lap Number", font: { color: '#8E8E93' } };
+                Plotly.newPlot('chart-area', [trace], layout, { displayModeBar: false });
             }
 
-            const trace = {
-                x: data.x_pos,
-                y: data.y_pos,
-                mode: 'markers',
-                type: 'scatter',
-                marker: {
-                    color: mode === 'gear' ? data.gear : data.speed,
-                    colorscale: mode === 'gear' ? 'Rainbow' : 'Viridis',
-                    size: 4
-                }
-            };
+            // 2. QUALI MODE (Speed Trace)
+            else if (data.mode === 'QUALI') {
+                const traceSpeed = {
+                    x: data.distance, y: data.speed,
+                    type: 'scatter', mode: 'lines', name: 'Speed',
+                    line: { color: data.color || '#FFD60A', width: 2 }
+                };
+                const traceThrottle = {
+                    x: data.distance, y: data.throttle,
+                    type: 'scatter', mode: 'lines', name: 'Throttle',
+                    yaxis: 'y2',
+                    line: { color: '#30D158', width: 1 },
+                    fill: 'tozeroy',
+                    opacity: 0.3
+                };
+                layout.yaxis2 = { overlaying: 'y', side: 'right', showgrid: false, visible: false };
+                layout.hovermode = 'x unified';
+                Plotly.newPlot('chart-area', [traceSpeed, traceThrottle], layout, { displayModeBar: false });
+            }
 
-            const layout = JSON.parse(JSON.stringify(layout_common));
-            layout.xaxis.visible = false;
-            layout.yaxis.visible = false;
-            layout.yaxis.scaleanchor = "x";
+            // 3. RACE MODE (Gap Trend)
+            else if (data.mode === 'RACE') {
+                const trace = {
+                    x: data.x, y: data.y,
+                    type: 'scatter', mode: 'lines',
+                    fill: 'tozeroy',
+                    line: { color: data.color || '#FF453A', width: 2 }
+                };
+                layout.yaxis.title = { text: "Gap Trend (Cumulative Δ)", font: { color: '#8E8E93' } };
+                layout.xaxis.title = { text: "Lap Number", font: { color: '#8E8E93' } };
+                Plotly.newPlot('chart-area', [trace], layout, { displayModeBar: false });
+            }
 
-            Plotly.newPlot('chart-canvas', [trace], layout, { displayModeBar: false });
+            document.getElementById('status-text').innerText = data.title;
         }
 
+        // --- Comparison Chart ---
         function renderChart(data) {
+            const layout = JSON.parse(JSON.stringify(layout_base));
+            layout.title = { text: `${data.meta.d1} vs ${data.meta.d2}`, font: { color: '#FFF' } };
+            layout.showlegend = true;
+            layout.legend = { x: 0, y: 1, font: { color: 'white' } };
+
             const trace1 = {
                 x: data.axis, y: data.drivers[data.meta.d1],
                 name: data.meta.d1, line: { color: data.meta.c1, width: 2 }
@@ -413,18 +425,14 @@
                 name: data.meta.d2, line: { color: data.meta.c2, width: 2 }
             };
 
-            const layout = JSON.parse(JSON.stringify(layout_common));
-            layout.showlegend = true;
-            layout.legend = { x: 0, y: 1, font: { color: 'white' } };
-
-            Plotly.newPlot('chart-canvas', [trace1, trace2], layout, { displayModeBar: false });
+            Plotly.newPlot('chart-area', [trace1, trace2], layout, { displayModeBar: false });
             document.getElementById('status-text').innerText = `${data.meta.d1} vs ${data.meta.d2}`;
         }
 
         // Global Exports
         window.updateDriverList = updateDriverList;
         window.updateSessionStatus = updateSessionStatus;
-        window.renderTelemetry = renderTelemetry;
+        window.renderAnalysis = renderAnalysis;
         window.renderChart = renderChart;
 
         // Command Input
