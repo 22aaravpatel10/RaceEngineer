@@ -1,74 +1,57 @@
 # config.py
-# 2026 Grid Configuration for Overcut
+# Overcut F1 Dashboard - Grid Configuration
 
-# --- Tier 1: Team Colors ---
+# --- TEAM COLORS (2025/2026) ---
 TEAM_COLORS = {
-    "Red Bull Racing": "#1E41FF",   # Verstappen / Hadjar
-    "Mercedes": "#00D2BE",          # Russell / Antonelli
-    "Ferrari": "#FF2800",           # Leclerc / Hamilton
-    "McLaren": "#FF8000",           # Norris / Piastri
-    "Aston Martin": "#006F62",      # Alonso / Stroll
-    "Alpine": "#0090FF",            # Gasly / Colapinto
-    "Williams": "#005AFF",          # Sainz / Albon
-    "VCARB": "#6692FF",             # Lawson / Lindblad
-    "Haas": "#B6BABD",              # Ocon / Bearman
-    "Audi": "#FF3B00",              # Hulkenberg / Bortoleto (Neon Red/Grey)
-    "Cadillac": "#D4AF37",          # Bottas / Perez (Gold/Black)
+    "Red Bull Racing": "#1E41FF",
+    "Mercedes": "#00D2BE",
+    "Ferrari": "#FF2800",
+    "McLaren": "#FF8000",
+    "Aston Martin": "#006F62",
+    "Alpine": "#0090FF",
+    "Williams": "#005AFF",
+    "VCARB": "#6692FF",
+    "Haas": "#B6BABD",
+    "Audi": "#FF3B00",
+    "Cadillac": "#D4AF37"
 }
 
-# --- Tier 1: Driver Mapping ---
-# Maps specific drivers to their 2026 Teams (for effective color lookup)
-# This handles the historical data re-mapping (e.g. HAM in Merc data -> Ferrari Red)
-DRIVER_MAPPING_2026 = {
-    "VER": "Red Bull Racing",
-    "HAD": "Red Bull Racing",
-    "RUS": "Mercedes",
-    "ANT": "Mercedes",
-    "LEC": "Ferrari",
-    "HAM": "Ferrari",
-    "NOR": "McLaren",
-    "PIA": "McLaren",
-    "ALO": "Aston Martin",
-    "STR": "Aston Martin",
-    "GAS": "Alpine",
-    "COL": "Alpine",
-    "SAI": "Williams",
-    "ALB": "Williams",
-    "LAW": "VCARB",
-    "LIN": "VCARB",
-    "OCO": "Haas",
-    "BEA": "Haas",
-    "HUL": "Audi",
-    "BOR": "Audi",
-    "BOT": "Cadillac",
-    "PER": "Cadillac" 
+# --- 2025 GRID SIMULATION (Based on Abu Dhabi 2023 Data) ---
+# Maps NEW driver to OLD driver's telemetry from 2023.
+GRID_2025 = {
+    "VER": {"team": "Red Bull Racing", "source": "VER"},
+    "LAW": {"team": "Red Bull Racing", "source": "PER"},  # Lawson takes Perez seat
+    "RUS": {"team": "Mercedes", "source": "RUS"},
+    "ANT": {"team": "Mercedes", "source": "HAM"},         # Kimi takes Lewis's data
+    "LEC": {"team": "Ferrari", "source": "LEC"},
+    "HAM": {"team": "Ferrari", "source": "SAI"},         # Lewis takes Sainz's data
+    "NOR": {"team": "McLaren", "source": "NOR"},
+    "PIA": {"team": "McLaren", "source": "PIA"},
+    "ALO": {"team": "Aston Martin", "source": "ALO"},
+    "STR": {"team": "Aston Martin", "source": "STR"},
+    "GAS": {"team": "Alpine", "source": "GAS"},
+    "DOO": {"team": "Alpine", "source": "OCO"},          # Doohan takes Ocon
+    "ALB": {"team": "Williams", "source": "ALB"},
+    "SAI": {"team": "Williams", "source": "SAR"},        # Sainz in, Sargeant data
+    "TSU": {"team": "VCARB", "source": "TSU"},
+    "HAD": {"team": "VCARB", "source": "RIC"},           # Hadjar takes Ric/Lawson slot
+    "OCO": {"team": "Haas", "source": "MAG"},            # Ocon takes Mag
+    "BEA": {"team": "Haas", "source": "HUL"},            # Bearman takes Hulk
+    "HUL": {"team": "Audi", "source": "BOT"},            # Hulk in Sauber (Audi)
+    "BOR": {"team": "Audi", "source": "ZHO"},            # Bortoleto in Sauber
 }
 
-# --- Time Machine: 2025 Simulation Map ---
-# Maps NEW 2025 drivers to OLD 2023 drivers' telemetry data
-SIMULATION_MAP = {
-    "HAM": {"team": "Ferrari", "source_driver": "SAI"},       # Lewis takes Sainz's Ferrari data
-    "LEC": {"team": "Ferrari", "source_driver": "LEC"},
-    "VER": {"team": "Red Bull Racing", "source_driver": "VER"},
-    "ANT": {"team": "Mercedes", "source_driver": "HAM"},      # Antonelli takes Lewis's Merc data
-    "RUS": {"team": "Mercedes", "source_driver": "RUS"},
-    "NOR": {"team": "McLaren", "source_driver": "NOR"},
-    "PIA": {"team": "McLaren", "source_driver": "PIA"},
-    "SAI": {"team": "Williams", "source_driver": "ALB"},      # Sainz takes Albon's Williams data
-    "ALB": {"team": "Williams", "source_driver": "SAR"},
-    "HUL": {"team": "Audi", "source_driver": "BOT"},         # Hulkenberg takes a Sauber (Audi) slot
-    "BOR": {"team": "Audi", "source_driver": "ZHO"},         # Bortoleto takes the other
-    "BEA": {"team": "Haas", "source_driver": "HUL"},         # Bearman takes Hulk's Haas data
-    "OCO": {"team": "Haas", "source_driver": "MAG"},
-    "BOT": {"team": "Cadillac", "source_driver": "STR"},      # Placeholder: Cadillac takes Aston data
-}
+# --- 2026 GRID PREDICTION (Hypothetical) ---
+# Adds Cadillac, keeps Audi.
+GRID_2026 = GRID_2025.copy()
+GRID_2026.update({
+    "BOT": {"team": "Cadillac", "source": "STR"},        # Cadillac uses Aston data as proxy
+    "PER": {"team": "Cadillac", "source": "ALO"},        # Perez in 2nd Caddy
+})
 
-def get_driver_color(driver_code: str) -> str:
-    """
-    Returns the 2026 Team Color for a given driver code.
-    If code not found, returns White.
-    """
-    team = DRIVER_MAPPING_2026.get(driver_code.upper())
-    if team:
+def get_driver_color(driver_code: str, grid: dict = None) -> str:
+    """Returns the team color for a given driver code."""
+    if grid and driver_code in grid:
+        team = grid[driver_code]["team"]
         return TEAM_COLORS.get(team, "#FFFFFF")
     return "#FFFFFF"
