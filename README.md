@@ -15,31 +15,34 @@ Built with Python (PyQt6) + HTML/CSS/JS frontend + FastF1/OpenF1 data integratio
 
 ## Installation
 
+### Prerequisites
+- Python 3.9+
+- Node.js (LTS)
+
+### Backend (FastAPI)
 ```bash
-# Clone the repo
-git clone https://github.com/22aaravpatel10/RaceEngineer.git
-cd RaceEngineer
-
-# Install dependencies
+cd backend-api
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-
-# Run the app
-python main.py
+uvicorn main:app --reload --port 8000
 ```
 
-## Tech Stack
+### Frontend (Next.js)
+```bash
+cd frontend-web
+npm install
+npm run dev
+```
 
-- **GUI**: PyQt6 + QtWebEngine (Chromium)
-- **Data**: FastF1 (historical), OpenF1 (live polling)
-- **Visualization**: Plotly.js
-- **Design**: Apple Health-inspired dark mode
+The dashboard will be available at [http://localhost:4000](http://localhost:4000).
 
 ## Usage
 
-1. **Launch**: `python main.py`
-2. **Wait**: 5-10s for Abu Dhabi 2023 data to load (first run)
-3. **Click**: Any driver to see their telemetry
-4. **Compare**: Type "Compare VER and LEC" in the command bar
+1. **Start Backend**: Ensure the API is running on port 8000.
+2. **Start Frontend**: Run `npm run dev` in `frontend-web`.
+3. **Open Browser**: Go to `http://localhost:4000`.
+4. **Compare**: Type "Compare VER and LEC" in the command bar.
 
 ## License
 

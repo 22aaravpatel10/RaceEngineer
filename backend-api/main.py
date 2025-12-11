@@ -1,6 +1,6 @@
 """
 Overcut API - FastF1 Data Engine
-Port: 5000
+Port: 8000
 """
 import os
 from fastapi import FastAPI
@@ -25,7 +25,7 @@ app = FastAPI(
 # CORS for Next.js frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:6000", "http://127.0.0.1:6000"],
+    allow_origins=["http://localhost:6000", "http://127.0.0.1:6000", "http://localhost:4000", "http://127.0.0.1:4000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
