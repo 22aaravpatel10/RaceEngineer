@@ -4,7 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Overcut Dashboard</title>
-    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+    <script src="plotly-2.27.0.min.js"></script>
+
     <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
         :root {
@@ -53,7 +55,6 @@
             -webkit-app-region: drag;
         }
 
-        /* --- Status Light (Debug) --- */
         #status-light {
             position: absolute;
             right: 15px;
@@ -61,38 +62,7 @@
             height: 8px;
             border-radius: 50%;
             background-color: #FF3B30;
-            /* Starts Red (Disconnected) */
-        }
-
-        /* --- Window Controls --- */
-        #window-controls {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            display: flex;
-            gap: 8px;
-            z-index: 1001;
-        }
-
-        .window-btn {
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
-            opacity: 0.8;
-        }
-
-        .window-btn:hover {
-            opacity: 1;
-        }
-
-        #btn-minimize {
-            background: #FFBD2E;
-        }
-
-        #btn-close {
-            background: #FF5F56;
+            /* Starts Red */
         }
 
         /* --- Bento Grid --- */
@@ -195,16 +165,11 @@
         <div id="status-light" title="Bridge Status"></div>
     </div>
 
-    <div id="window-controls">
-        <button class="window-btn" id="btn-minimize" title="Minimize"></button>
-        <button class="window-btn" id="btn-close" title="Close"></button>
-    </div>
-
     <div id="bento-grid">
         <div class="bento-card" id="driver-list-card">
             <h2 style="margin:0 0 15px 0; font-size:20px;">Grid</h2>
             <div id="driver-list-container" style="overflow-y: auto; flex: 1;">
-                <div style="padding:20px; text-align:center; color:#555;">Waiting for Python...</div>
+                <div style="padding:20px; text-align:center; color:#555;">Waiting for Data...</div>
             </div>
         </div>
 
@@ -221,59 +186,31 @@
     </div>
 
     <script>
-        // --- THE UNBREAKABLE BRIDGE SETUP ---
+        // --- BRIDGE SETUP ---
         var backend = null;
 
         function initBridge() {
             if (typeof qt !== 'undefined') {
                 new QWebChannel(qt.webChannelTransport, function (channel) {
                     backend = channel.objects.bridge;
-
-                    // Bridge established! Turn light green
                     document.getElementById('status-light').style.backgroundColor = '#30D158';
-                    document.getElementById('dynamic-island').firstChild.textContent = "System Ready";
-                    console.log("Bridge Connected Successfully.");
-
-                    // Wire window controls
-                    document.getElementById('btn-minimize').onclick = () => backend.minimize_window();
-                    document.getElementById('btn-close').onclick = () => backend.close_window();
+                    console.log("Bridge Connected.");
                 });
             } else {
-                // Retry if qt is not ready yet
-                console.log("Qt transport not ready, retrying...");
                 setTimeout(initBridge, 100);
             }
         }
-
-        // Start connection attempt immediately
         initBridge();
 
-        // Commander Input
-        document.getElementById('commander-input').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter' && backend) {
-                backend.process_command(this.value);
-                this.value = '';
-            }
-        });
-
-        // --- Driver Selection Logic ---
+        // --- INTERACTION ---
         function selectDriver(driverId, color) {
-            console.log("Clicked:", driverId);
-
-            if (!backend) {
-                alert("Error: Python Bridge Disconnected. Please restart.");
-                return;
-            }
-
-            // Visual Feedback
+            if (!backend) return;
             document.documentElement.style.setProperty('--accent-blue', color);
             document.getElementById('dynamic-island').firstChild.textContent = "Loading " + driverId + "...";
-
-            // Call Python
             backend.driver_selected(driverId);
         }
 
-        // --- Data Receivers (Called from Python) ---
+        // --- DATA RECEIVERS ---
         function updateDriverList(drivers) {
             const container = document.getElementById('driver-list-container');
             container.innerHTML = '';
@@ -281,9 +218,7 @@
             drivers.forEach(driver => {
                 const card = document.createElement('div');
                 card.className = 'driver-item';
-                // IMPORTANT: Pass arguments correctly
                 card.onclick = function () { selectDriver(driver.id, driver.color); };
-
                 card.innerHTML = `
                     <div class="indicator" style="background: ${driver.color}"></div>
                     <span class="driver-code">${driver.id}</span>
@@ -292,15 +227,13 @@
                 `;
                 container.appendChild(card);
             });
-            document.getElementById('dynamic-island').firstChild.textContent = "Grid Loaded";
         }
 
         function updateSessionStatus(payload) {
-            const island = document.getElementById('dynamic-island');
-            island.firstChild.textContent = payload.text;
+            document.getElementById('dynamic-island').firstChild.textContent = payload.text;
         }
 
-        // --- Plotly Logic ---
+        // --- PLOTLY RENDERING ---
         const layout_base = {
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
@@ -313,7 +246,12 @@
         };
 
         function renderTelemetry(telem) {
-            console.log("Rendering:", telem.driver);
+            // Safety check for Plotly
+            if (typeof Plotly === 'undefined') {
+                alert("Error: Plotly JS not found. Please download plotly-2.27.0.min.js to frontend folder.");
+                return;
+            }
+
             document.getElementById('dynamic-island').firstChild.textContent = telem.driver + " Telemetry";
 
             const traceSpeed = {
@@ -344,36 +282,10 @@
             Plotly.newPlot('chart-area', [traceSpeed, traceThrottle], layout, { displayModeBar: false });
         }
 
-        function renderChart(payload) {
-            // Comparison Logic (Ghost Car)
-            const trace1 = {
-                x: payload.axis, y: payload.drivers[payload.meta.d1],
-                type: 'scatter', mode: 'lines', name: payload.meta.d1,
-                line: { color: payload.meta.c1, width: 2 }
-            };
-            const trace2 = {
-                x: payload.axis, y: payload.drivers[payload.meta.d2],
-                type: 'scatter', mode: 'lines', name: payload.meta.d2,
-                line: { color: payload.meta.c2, width: 2 }
-            };
-            const traceDelta = {
-                x: payload.axis, y: payload.delta,
-                yaxis: 'y2', type: 'scatter', mode: 'lines', name: 'Delta (s)',
-                line: { color: '#FFF', width: 1, dash: 'dot' }
-            };
-
-            const layout = JSON.parse(JSON.stringify(layout_base));
-            layout.yaxis2 = { overlaying: 'y', side: 'right' };
-            layout.title = { text: `${payload.meta.d1} vs ${payload.meta.d2}`, font: { color: '#FFF' } };
-
-            Plotly.newPlot('chart-area', [trace1, trace2, traceDelta], layout, { displayModeBar: false });
-        }
-
         // Expose global functions for Python
         window.updateDriverList = updateDriverList;
         window.updateSessionStatus = updateSessionStatus;
         window.renderTelemetry = renderTelemetry;
-        window.renderChart = renderChart;
     </script>
 </body>
 
