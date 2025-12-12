@@ -721,6 +721,7 @@ class F1Processor:
                 # We can try loading
                 print(f"Loading {sess_name}...")
                 sess.load(telemetry=False, laps=True, weather=False, messages=False)
+
                 # Extract Results
                 
                 # Helper to get results (official or calculated)
@@ -779,12 +780,25 @@ class F1Processor:
         
         # 1. Try Official Results first
         if hasattr(session, 'results') and not session.results.empty:
-            # Check if Position looks valid (not all NaNs or all 0s)
+            # Check if Position looks valid
             positions = session.results['Position']
-            if not positions.isna().all() and not (positions == 0).all():
+            
+            # [STRICT VALIDATION]
+            # If too many positions are 0 (e.g. Ergast partial failure), discard it
+            # FastF1 often fills broken data with 0
+            zero_count = (positions == 0).sum()
+            total_count = len(positions)
+            is_garbage = (zero_count / total_count) > 0.5
+            
+            if not positions.isna().all() and not is_garbage:
                  # Looks good, use it
-                 # Sort
-                 top = session.results.sort_values(by='Position').head(10)
+                 # Sort by Position, defaulting NaNs to bottom
+                 top = session.results.copy()
+                 top['Position'] = top['Position'].fillna(999)
+                 top = top.sort_values(by='Position')
+                 
+                 # Limit to 20 (all drivers) instead of 10
+                 # The frontend will handle slicing
                  
                  for _, row in top.iterrows():
                      # Safe extraction
@@ -794,7 +808,7 @@ class F1Processor:
                          color = get_team_color(team)
                          
                          pos_val = row.get('Position')
-                         position = int(pos_val) if pd.notna(pos_val) else 0
+                         position = int(pos_val) if pd.notna(pos_val) and pos_val != 999 else 0
                          
                          status = str(row.get('Status', 'Finished'))
                          
@@ -834,78 +848,125 @@ class F1Processor:
                      except: continue
                  
                  if results_data:
-                     # Double check ordering - sometimes sort_values fails if types are mixed
-                     results_data.sort(key=lambda x: x['position'] if x['position'] > 0 else 999)
                      return results_data
 
         # 2. Fallback: Calculate from Laps
-        # This happens if Ergast is down
+        # This happens if Ergast is down or data is garbage
         if session.laps is None or session.laps.empty:
             return []
             
-        print(f"Calculating fallback results for {session_type}...")
+        # print(f"Calculating fallback results for {session_type}...")
         
         # Get list of drivers
         drivers = session.laps['Driver'].unique()
         leaderboard = []
         
         for drv in drivers:
-            d_laps = session.laps.pick_driver(drv)
-            if d_laps.empty: continue
-            
-            team = d_laps['Team'].iloc[0]
-            fastest = d_laps.pick_fastest()
-            
-            best_time = float('inf')
-            best_time_str = "No Time"
-            
-            if fastest is not None and pd.notna(fastest['LapTime']):
-                best_time = fastest['LapTime'].total_seconds()
-                tmp_str = str(fastest['LapTime']).split('days')[-1].strip()
-                if '.' in tmp_str: tmp_str = tmp_str[:-3]
-                best_time_str = tmp_str
-            
-            # For Race, we ideally want finishing position.
-            # laps['Position'] exists?
-            last_pos = 999
-            if 'Position' in d_laps.columns:
-                last_val = d_laps.iloc[-1]['Position']
-                if pd.notna(last_val):
-                    last_pos = int(last_val)
-            
-            leaderboard.append({
-                "driver": drv,
-                "team": team,
-                "best_time": best_time,
-                "best_time_str": best_time_str,
-                "last_pos": last_pos,
-                "laps_count": len(d_laps)
-            })
+            try:
+                d_laps = session.laps.pick_driver(drv)
+                if d_laps.empty: continue
+                
+                team = d_laps['Team'].iloc[0]
+                fastest = d_laps.pick_fastest()
+                
+                best_time = float('inf')
+                best_time_str = "No Time"
+                
+                if fastest is not None and pd.notna(fastest['LapTime']):
+                    best_time = fastest['LapTime'].total_seconds()
+                    tmp_str = str(fastest['LapTime']).split('days')[-1].strip()
+                    if '.' in tmp_str: tmp_str = tmp_str[:-3]
+                    best_time_str = tmp_str
+                
+                laps_completed = len(d_laps)
+                
+                # Calculate Total Race Time (for sorting when positions are missing)
+                # We filter out NaT lap times just in case (e.g. unfinished laps)
+                valid_laps = d_laps.dropna(subset=['LapTime'])
+                total_race_time = valid_laps['LapTime'].sum().total_seconds() if not valid_laps.empty else float('inf')
+                
+                # Try to get position from last lap
+                last_pos = 999
+                if not d_laps.empty and 'Position' in d_laps.columns:
+                     # Check the last lap
+                     last_lap = d_laps.iloc[-1]
+                     p = last_lap['Position']
+                     if pd.notna(p):
+                         last_pos = int(p)
+                
+                leaderboard.append({
+                    "driver": drv,
+                    "team": team,
+                    "best_time": best_time,
+                    "best_time_str": best_time_str,
+                    "last_pos": last_pos,
+                    "laps_count": laps_completed,
+                    "total_race_time": total_race_time
+                })
+            except Exception as e:
+                # Log but continue to next driver
+                print(f"Error processing driver {drv} fallback: {e}")
+                continue
             
         # SORTING LOGIC
         if session_type in ['R', 'S']:
-            # Race: Sort by Last Position (if available), then by Laps Completed (desc), then Time
-            # If position is 999 (missing), we rely on laps count
-            leaderboard.sort(key=lambda x: (x['last_pos'], -x['laps_count'], x['best_time']))
+            # Race: Sort by Laps Completed (desc) FIRST, then Total Race Time (asc)
+            leaderboard.sort(key=lambda x: (-x['laps_count'], x['total_race_time']))
         else:
             # FP/Quali: Sort by Best Time
             leaderboard.sort(key=lambda x: x['best_time'])
             
-        # Format for output
-        for i, row in enumerate(leaderboard[:10]): # Top 10
-            pos = i + 1
-            
-            time_display = row['best_time_str']
-            if session_type in ['R', 'S'] and pos > 1:
-                pass
+        # Determine Max Laps for Status Inference
+        max_laps = 0
+        winner_time = 0
+        if leaderboard:
+            max_laps = max(d['laps_count'] for d in leaderboard)
+            if session_type in ['R', 'S']:
+                 winner_time = leaderboard[0]['total_race_time']
 
+        # Format for output
+        for i, row in enumerate(leaderboard): # Show all
+            pos = i + 1
+            display_pos = pos
+            
+            # Infer Status & Time Display
+            status = "Calculated"
+            display_time = row['best_time_str'] # Default for Quali/FP
+            
+            if session_type in ['R', 'S']:
+                display_time = "DNF" # Default if not status finished
+                
+                if row['laps_count'] == max_laps:
+                    status = "Finished"
+                    if display_pos == 1: 
+                        status = "Winner"
+                        # Format total time
+                        total_s = row['total_race_time']
+                        h = int(total_s // 3600)
+                        m = int((total_s % 3600) // 60)
+                        s = total_s % 60
+                        display_time = f"{h}:{m:02d}:{s:06.3f}"
+                    else:
+                        # Gap
+                        gap = row['total_race_time'] - winner_time
+                        display_time = f"+{gap:.3f}s"
+                elif row['laps_count'] < max_laps * 0.9:
+                    # Completed less than 90% distance -> DNF
+                    status = "DNF"
+                    display_time = "DNF"
+                else:
+                    # Lapped
+                    diff = max_laps - row['laps_count']
+                    status = f"+{diff} Lap{'s' if diff > 1 else ''}"
+                    display_time = status
+            
             results_data.append({
-                "position": pos,
+                "position": display_pos,
                 "driver": row['driver'],
                 "team": row['team'],
-                "time": time_display, 
+                "time": display_time,
                 "color": get_team_color(row['team']),
-                "status": "Calculated"
+                "status": status
             })
             
         return results_data

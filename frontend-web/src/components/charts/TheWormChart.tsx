@@ -69,7 +69,7 @@ export function TheWormChart() {
                         },
                         yaxis: {
                             title: { text: 'Gap to Leader (s)' },
-                            autorange: 'reversed', // Leader (0) at Top
+                            range: [120, -5], // Clamp: +120s at bottom, -5s (lead) at top
                             showgrid: true,
                             gridcolor: '#333'
                         },
