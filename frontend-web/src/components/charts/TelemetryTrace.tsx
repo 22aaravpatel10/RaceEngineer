@@ -96,18 +96,24 @@ export function TelemetryTrace({
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
             font: { family: '-apple-system', color: '#8E8E93' },
-            margin: { t: 50, r: 20, l: 50, b: 40 },
+            margin: { t: 40, r: 20, l: 50, b: 50 },
             xaxis: {
                 showgrid: false,
                 zeroline: false,
                 color: '#444',
-                title: { text: 'Distance (m)', font: { color: '#8E8E93' } },
+                title: {
+                    text: 'Track Distance (meters)',
+                    font: { color: '#CCC', size: 12 }
+                },
             },
             yaxis: {
                 showgrid: false,
                 zeroline: false,
                 color: '#444',
-                title: { text: 'Speed (km/h)', font: { color: '#8E8E93' } },
+                title: {
+                    text: 'Speed (km/h)',
+                    font: { color: '#CCC', size: 12 }
+                },
             },
             yaxis2: {
                 overlaying: 'y' as const,

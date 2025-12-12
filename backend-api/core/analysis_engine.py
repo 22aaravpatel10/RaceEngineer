@@ -18,40 +18,47 @@ class AnalysisEngine:
         # Ensure laps are sorted
         laps = laps.sort_values(['Driver', 'LapNumber'])
         
-        # Calculate cumulative time (RaceTime) if not present
-        # Note: FastF1 usually provides 'Time' (SessionTime). race time needs zeroing.
-        
-        # We need a reference "Leader" for every lap.
-        # Leader is the driver with position 1 at that lap.
-        
-        # Create a pivot table of Cumulative Time: Index=LapNumber, Columns=Driver
-        # 1. Get cumulative seconds
+        # Calculate cumulative time (RaceTime)
         laps['CumTime'] = laps['Time'].dt.total_seconds()
         
-        # 2. Pivot
-        pivot = laps.pivot(index='LapNumber', columns='Driver', values='CumTime')
+        # 1. Identify the Leader Time for each lap
+        # Use the time of the driver who is physically in Position 1
+        leader_laps = laps[laps['Position'] == 1.0][['LapNumber', 'CumTime']].set_index('LapNumber')
         
-        # 3. Handle Pitstops/missing data with forward fill (generic)
-        pivot = pivot.ffill()
+        # 2. Pivot everyone's times AND positions
+        pivot_time = laps.pivot(index='LapNumber', columns='Driver', values='CumTime')
+        pivot_pos = laps.pivot(index='LapNumber', columns='Driver', values='Position')
         
-        # 4. Determine Leader time at each lap (min time at that lap)
-        leader_times = pivot.min(axis=1)
-        
-        # 5. Calculate Deltas
-        deltas = pivot.sub(leader_times, axis=0) # Subtract leader time from everyone
-        
+        # 3. Calculate Deltas
         result = {}
+        
         for driver in drivers:
-            if driver not in deltas.columns:
+            if driver not in pivot_time.columns:
                 continue
                 
             driver_gaps = []
-            for lap_num, gap in deltas[driver].items():
-                if pd.notna(gap):
-                    driver_gaps.append({
-                        "lap": int(lap_num),
-                        "gap": float(gap)
-                    })
+            
+            # Get driver series
+            d_times = pivot_time[driver].dropna()
+            d_positions = pivot_pos[driver] # Will likely match index of d_times but let's be safe
+            
+            for lap_num, driver_time in d_times.items():
+                if lap_num not in leader_laps.index:
+                    continue
+                    
+                leader_time = leader_laps.loc[lap_num, 'CumTime']
+                gap = driver_time - leader_time
+                
+                # Get position safely
+                pos = d_positions.get(lap_num, None)
+                
+                # Only add if it makes sense
+                driver_gaps.append({
+                    "lap": int(lap_num),
+                    "gap": float(gap),
+                    "position": int(pos) if pd.notna(pos) else None
+                })
+            
             result[driver] = driver_gaps
             
         return result

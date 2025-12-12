@@ -10,6 +10,7 @@ const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 interface GapData {
     lap: number;
     gap: number;
+    position: number;
 }
 
 interface DriverGaps {
@@ -25,26 +26,31 @@ export function TheWormChart() {
     useEffect(() => {
         if (!session) return;
 
+        // Reset data when session changes to trigger loading state
+        setData([]);
+
         api.get('/race/gaps')
-            .then(res => setData(res.data))
+            .then(res => setData(res.data || []))
             .catch(console.error);
     }, [session]);
 
-    if (!data.length) return <div className="text-center text-text-secondary">Loading Race Gaps...</div>;
+    if (!data.length) return <div className="text-white/50 text-sm flex items-center justify-center h-full">Loading Race Gaps...</div>;
 
     const traces = data.map(d => ({
         x: d.data.map(p => p.lap),
         y: d.data.map(p => p.gap),
+        text: d.data.map(p => p.position),
         type: 'scatter',
         mode: 'lines',
         name: d.driver,
-        line: { color: d.color, width: 2 }
+        line: { color: d.color, width: 2 },
+        hovertemplate: '<b>%{fullData.name}</b> P%{text}   +%{y:.2f}s<extra></extra>'
     }));
 
     return (
-        <div className="w-full h-full p-4 bg-card rounded-xl">
+        <div className="w-full h-full p-4 bg-card rounded-xl flex flex-col">
             <h3 className="text-white font-bold mb-4">Race Gaps (The Worm)</h3>
-            <div className="w-full h-[300px]">
+            <div className="flex-1 min-h-0 relative">
                 <Plot
                     data={traces as any}
                     layout={{
@@ -57,7 +63,9 @@ export function TheWormChart() {
                             showgrid: false,
                             zeroline: false,
                             gridcolor: '#333',
-                            range: session ? [1, session.totalLaps] : undefined
+                            range: session ? [1, session.totalLaps] : undefined,
+                            showspikes: true,
+                            spikemode: 'across'
                         },
                         yaxis: {
                             title: { text: 'Gap to Leader (s)' },
@@ -70,7 +78,7 @@ export function TheWormChart() {
                         legend: { orientation: 'h', y: -0.2 }
                     }}
                     useResizeHandler={true}
-                    style={{ width: '100%', height: '100%' }}
+                    style={{ width: '100%', height: '100%', minHeight: '500px' }}
                     config={{ displayModeBar: false }}
                 />
             </div>

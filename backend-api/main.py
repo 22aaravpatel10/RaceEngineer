@@ -1,45 +1,36 @@
-"""
-Overcut API - FastF1 Data Engine
-Port: 8000
-"""
-import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from api.routes import router
 import fastf1
 
-from api.routes import router
-
 # Initialize FastF1 Cache
-CACHE_DIR = os.path.join(os.path.dirname(__file__), '../f1_cache')
-if not os.path.exists(CACHE_DIR):
-    os.makedirs(CACHE_DIR)
-fastf1.Cache.enable_cache(CACHE_DIR)
+fastf1.Cache.enable_cache('./cache')
 
-# FastAPI App
-app = FastAPI(
-    title="Overcut F1 API",
-    description="High-performance F1 Telemetry & Strategy API",
-    version="2.0.0"
-)
+app = FastAPI(title="Overcut F1 API")
 
-# CORS for Next.js frontend
+# 1. CORS Middleware (Allow Frontend to talk to Backend)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:6000", "http://127.0.0.1:6000", "http://localhost:4000", "http://127.0.0.1:4000"],
+    allow_origins=["*"],  # Allow all origins for dev; restrict in prod
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount Routes
+# 2. NO-CACHE Middleware (Crucial Fix for Data Sync)
+@app.middleware("http")
+async def add_no_cache_header(request: Request, call_next):
+    response = await call_next(request)
+    # Force browser to always fetch new data
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+# Include Routes
 app.include_router(router, prefix="/api")
 
-
-@app.get("/")
-async def root():
-    return {"status": "online", "service": "Overcut F1 API", "version": "2.0.0"}
-
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+if __name__ == "__main__":
+    import uvicorn
+    # Using port 8000 to match existing project configuration
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

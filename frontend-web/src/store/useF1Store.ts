@@ -70,6 +70,7 @@ interface F1State {
     toggleChart: (chartId: string) => void;
     setHoveredLap: (lap: number | null) => void;
     setDriverLaps: (laps: LapData[]) => void;
+    setViewMode: (mode: 'dashboard' | 'summary') => void;
 }
 
 export const useF1Store = create<F1State>((set) => ({
@@ -78,13 +79,14 @@ export const useF1Store = create<F1State>((set) => ({
     isLoading: false,
     error: null,
     // State
-    selectedYear: 2023,
-    selectedGP: "Abu Dhabi",
+    selectedYear: 2024,
+    selectedGP: "",
     selectedSessionType: "R",
     selectedDriver: null,
     selectedMode: 'RACE',
-    activeCharts: ['the_worm', 'strategy_gantt'], // Default charts
+    activeCharts: ['the_worm', 'consistency_box'], // Default charts
     hoveredLap: null,
+    viewMode: 'dashboard',
     driverLaps: [],
 
     // Actions
@@ -96,12 +98,13 @@ export const useF1Store = create<F1State>((set) => ({
     setMode: (mode) => set({ selectedMode: mode }),
     toggleChart: (chartId) => set((state) => {
         const isActive = state.activeCharts.includes(chartId);
-        return {
-            activeCharts: isActive
-                ? state.activeCharts.filter(id => id !== chartId)
-                : [...state.activeCharts, chartId]
-        };
+        let updatedCharts = isActive
+            ? state.activeCharts.filter(id => id !== chartId)
+            : [...state.activeCharts, chartId];
+        if (updatedCharts.length === 0) updatedCharts = [chartId]; // Keep one active
+        return { activeCharts: updatedCharts };
     }),
     setHoveredLap: (lap) => set({ hoveredLap: lap }),
     setDriverLaps: (laps) => set({ driverLaps: laps }),
+    setViewMode: (mode) => set({ viewMode: mode }),
 }));

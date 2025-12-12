@@ -2,6 +2,7 @@
 API Routes - Overcut F1 API
 """
 from fastapi import APIRouter, HTTPException, Query
+from urllib.parse import unquote
 from typing import Optional
 
 from core.f1_processor import processor
@@ -107,3 +108,26 @@ async def get_ghost_analysis(driver1: str, driver2: str):
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analysis/consistency")
+async def get_consistency_data():
+    """Get Lap Time Consistency (Box Plot)"""
+    try:
+        data = processor.get_lap_distribution()
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/weekend/{year}/{gp}")
+async def get_weekend_summary(year: int, gp: str):
+    """Get a summary of the weekend's sessions and results"""
+    try:
+        # URL decode GP name just in case
+        decoded_gp = unquote(gp)
+        data = processor.get_weekend_summary(year, decoded_gp)
+        return {"data": data}
+    except Exception as e:
+         print(f"Weekend summary error: {e}")
+         raise HTTPException(status_code=500, detail=str(e))

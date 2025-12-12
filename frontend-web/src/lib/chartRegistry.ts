@@ -4,6 +4,8 @@ import { TheWormChart } from '@/components/charts/TheWormChart';
 import { FuelCorrectedScatter } from '@/components/charts/FuelCorrectedScatter';
 import { GhostDeltaTrace } from '@/components/charts/GhostDeltaTrace';
 import { PitRejoinGantt } from '@/components/charts/PitRejoinGantt';
+import { ConsistencyBoxPlot } from '@/components/charts/ConsistencyBoxPlot';
+import { TopSpeedChart } from '@/components/charts/TopSpeedChart';
 
 export type ChartCategory = 'PRACTICE' | 'QUALI' | 'RACE' | 'GENERAL';
 
@@ -23,7 +25,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Multi-Lap Telemetry',
         category: 'PRACTICE',
         component: TelemetryTrace,
-        gridCols: 'col-span-1 lg:col-span-1',
+        gridCols: 'col-span-1 lg:col-span-2',
         height: 'h-[400px]'
     },
     {
@@ -41,7 +43,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Fastest Lap Telemetry',
         category: 'QUALI',
         component: TelemetryTrace,
-        gridCols: 'col-span-1',
+        gridCols: 'col-span-1 lg:col-span-2',
         height: 'h-[400px]'
     },
     {
@@ -60,7 +62,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         category: 'RACE',
         component: TheWormChart,
         gridCols: 'col-span-1 lg:col-span-2',
-        height: 'h-[350px]'
+        height: 'h-[500px]'
     },
     {
         id: 'fuel_scatter',
@@ -71,11 +73,27 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         height: 'h-[350px]'
     },
     {
-        id: 'strategy_gantt',
+        id: 'pit_rejoin_gantt',
         label: 'Tyre Strategy Gantt',
-        category: 'RACE',
         component: PitRejoinGantt,
+        category: 'RACE',
         gridCols: 'col-span-1 lg:col-span-2',
-        height: 'h-[350px]'
+        height: 'h-[600px]'
+    },
+    {
+        id: 'top_speed_chart',
+        label: 'Top Speed History',
+        component: TopSpeedChart,
+        category: 'RACE',
+        gridCols: 'col-span-1 lg:col-span-2',
+        height: 'h-[400px]'
+    },
+    {
+        id: 'consistency_box',
+        label: 'Lap Time Consistency',
+        category: 'RACE',
+        component: ConsistencyBoxPlot,
+        gridCols: 'col-span-1 lg:col-span-2',
+        height: 'h-[400px]'
     }
 ];

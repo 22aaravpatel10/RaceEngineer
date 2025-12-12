@@ -7,12 +7,29 @@ import { CHART_REGISTRY } from '@/lib/chartRegistry';
 interface Race {
     round: number;
     name: string;
+    sessions: string[];
 }
 
+// Session code to Label map
+const SESSION_LABELS: Record<string, string> = {
+    "FP1": "Practice 1",
+    "FP2": "Practice 2",
+    "FP3": "Practice 3",
+    "Q": "Qualifying",
+    "S": "Sprint",
+    "SS": "Sprint Shootout",
+    "R": "Race"
+};
+
 export function Sidebar() {
-    const { session, selectedDriver, selectedMode, selectDriver, setMode, selectedYear, selectedGP, selectedSessionType, setSelection, activeCharts, toggleChart } = useF1Store();
+    const {
+        session, selectedDriver, selectedMode, selectDriver,
+        selectedYear, selectedGP, selectedSessionType, activeCharts,
+        setSelection, toggleChart, viewMode, setViewMode, setMode
+    } = useF1Store();
     const [seasons, setSeasons] = useState<number[]>([]);
     const [races, setRaces] = useState<Race[]>([]);
+    const [availableSessions, setAvailableSessions] = useState<string[]>(["FP1", "FP2", "FP3", "Q", "R"]); // Default
 
     // Load Seasons
     useEffect(() => {
@@ -27,6 +44,19 @@ export function Sidebar() {
             })
             .catch(console.error);
     }, [selectedYear]);
+
+    // Update available sessions when GP changes
+    useEffect(() => {
+        const race = races.find(r => r.name === selectedGP);
+        if (race && race.sessions && race.sessions.length > 0) {
+            setAvailableSessions(race.sessions);
+            // If current selected session is not in the new list, default to first (usually FP1) or Race
+            if (!race.sessions.includes(selectedSessionType)) {
+                // Don't auto-switch immediately to avoid loops, but maybe good practice?
+                // setSelection(selectedYear, selectedGP, race.sessions[0]);
+            }
+        }
+    }, [selectedGP, races]);
 
     return (
         <aside className="w-64 bg-card rounded-xl p-4 flex flex-col h-full gap-4">
@@ -49,7 +79,7 @@ export function Sidebar() {
                     <label className="text-[10px] font-bold text-text-secondary uppercase">Grand Prix</label>
                     <select
                         value={selectedGP}
-                        onChange={(e) => setSelection(selectedYear, e.target.value, selectedSessionType)}
+                        onChange={(e) => setSelection(selectedYear, e.target.value, "R")} // Default to Race on new GP?
                         className="bg-card text-white p-1.5 rounded text-sm border border-white/10 outline-none focus:border-accent"
                     >
                         <option value="" disabled>Select GP</option>
@@ -65,13 +95,9 @@ export function Sidebar() {
                         onChange={(e) => setSelection(selectedYear, selectedGP, e.target.value)}
                         className="bg-card text-white p-1.5 rounded text-sm border border-white/10 outline-none focus:border-accent"
                     >
-                        <option value="FP1">Practice 1</option>
-                        <option value="FP2">Practice 2</option>
-                        <option value="FP3">Practice 3</option>
-                        <option value="S">Sprint</option>
-                        <option value="SS">Sprint Shootout</option>
-                        <option value="Q">Qualifying</option>
-                        <option value="R">Race</option>
+                        {availableSessions.map(code => (
+                            <option key={code} value={code}>{SESSION_LABELS[code] || code}</option>
+                        ))}
                     </select>
                 </div>
             </div>

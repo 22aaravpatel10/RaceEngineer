@@ -101,7 +101,7 @@ export function PitRejoinGantt() {
     return (
         <div className="w-full h-full p-4 bg-card rounded-xl">
             <h3 className="text-white font-bold mb-4">Tyre Strategies</h3>
-            <div className="w-full h-[400px]">
+            <div className="w-full h-full min-h-[300px]">
                 <Plot
                     data={traces}
                     layout={{
@@ -111,7 +111,7 @@ export function PitRejoinGantt() {
                         // Actually 'relative' (default aka stack) w/ base works.
                         paper_bgcolor: 'rgba(0,0,0,0)',
                         plot_bgcolor: 'rgba(0,0,0,0)',
-                        margin: { t: 10, r: 10, l: 60, b: 40 },
+                        margin: { t: 10, r: 10, l: 100, b: 40 }, // Increased left margin for driver names
                         font: { family: 'Inter, sans-serif', color: '#8E8E93' },
                         xaxis: {
                             title: { text: 'Lap Number' },
@@ -128,7 +128,7 @@ export function PitRejoinGantt() {
                         legend: { orientation: 'h', y: -0.1 }
                     }}
                     useResizeHandler={true}
-                    style={{ width: '100%', height: '100%' }}
+                    style={{ width: '100%', height: '100%', minHeight: '500px' }}
                     config={{ displayModeBar: false }}
                 />
             </div>

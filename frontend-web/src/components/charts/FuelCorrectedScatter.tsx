@@ -32,7 +32,7 @@ export function FuelCorrectedScatter() {
     return (
         <div className="w-full h-full p-4 bg-card rounded-xl">
             <h3 className="text-white font-bold mb-4">Fuel Adjusted Pace ({selectedDriver})</h3>
-            <div className="w-full h-[300px]">
+            <div className="w-full h-full min-h-[300px]">
                 <Plot
                     data={[
                         {

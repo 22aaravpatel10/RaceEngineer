@@ -1,25 +1,24 @@
 # Overcut - F1 Race Engineer Dashboard
 
-A high-fidelity, dark-mode desktop application for Formula 1 telemetry analysis.  
-Built with Python (PyQt6) + HTML/CSS/JS frontend + FastF1/OpenF1 data integration.
-
-![Overcut Dashboard](https://via.placeholder.com/800x450/000000/FFFFFF?text=Overcut+Dashboard)
+A high-fidelity, web-based Formula 1 analytics platform.
+Built with **FastAPI** (Backend) and **Next.js** (Frontend), utilizing **FastF1** for efficient telemetry data processing.
 
 ## Features
 
-- **2025 Grid Simulation**: Uses "Time Machine" to map 2025 drivers to 2023 telemetry data
-- **Ghost Car Algorithm**: Aligns telemetry by distance for precise driver comparison
-- **Apple Health Design**: Bento grid layout, Dynamic Island, minimal Plotly charts
-- **Natural Language Commands**: Type "Compare VER and HAM" to overlay traces
-- **Click-to-Load Telemetry**: Click any driver card to view their Speed/Throttle traces
+- **📊 Live Dashboard**: Real-time telemetry visualization for any F1 session.
+- **📅 Weekend Summary**: Comprehensive overview of every session (FP1, FP2, FP3, Quali, Race) including fastest laps and finishing order.
+- **🏎️ Telemetry Analysis**:
+    - **Speed/Throttle/Brake Traces**: Interactive comparisons between drivers.
+    - **"The Worm"**: Gap to leader evolution over the entire race.
+    - **Top Speed History**: Track maximum velocity per lap.
+    - **Tyre Strategy**: Visual Gantt chart of pit stops and compound usage.
+- **👻 Ghost Car**: Advanced GPS delta analysis to find time lost/gained in corners.
+- **2025 Grid Simulation**: Optional mode to simulate future driver lineups.
 
-## Installation
+## Installation & Setup
 
-### Prerequisites
-- Python 3.9+
-- Node.js (LTS)
-
-### Backend (FastAPI)
+### 1. Backend (Python/FastAPI)
+Navigate to the `backend-api` directory:
 ```bash
 cd backend-api
 python3 -m venv venv
@@ -27,23 +26,26 @@ source venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
+*The API will start at `http://localhost:8000`*
 
-### Frontend (Next.js)
+### 2. Frontend (Next.js/React)
+Navigate to the `frontend-web` directory:
 ```bash
 cd frontend-web
 npm install
 npm run dev
 ```
+*The Dashboard will start at `http://localhost:4000` (or the port shown in terminal)*
 
-The dashboard will be available at [http://localhost:4000](http://localhost:4000).
+## Usage Guide
 
-## Usage
-
-1. **Start Backend**: Ensure the API is running on port 8000.
-2. **Start Frontend**: Run `npm run dev` in `frontend-web`.
-3. **Open Browser**: Go to `http://localhost:4000`.
-4. **Compare**: Type "Compare VER and LEC" in the command bar.
+1. **Select a Race**: Use the sidebar to pick a Season and Grand Prix (e.g., 2024 Abu Dhabi).
+2. **Dashboard Mode**:
+    - View live telemetry, gap charts, and consistency plots.
+    - Click "Compare" to overlay two drivers.
+3. **Summary Mode**:
+    - Toggle the switch in the top header to "Summary".
+    - View results for all sessions, highlighting fastest laps and gaps.
 
 ## License
-
 MIT
