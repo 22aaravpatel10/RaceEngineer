@@ -82,7 +82,7 @@ export function DashboardGrid({
     if (!session) return null;
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-20">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 pb-20">
             {activeCharts.length === 0 && (
                 <div className="col-span-full h-64 flex items-center justify-center text-text-secondary border border-dashed border-white/10 rounded-xl">
                     No charts selected. Open Sidebar to add specific analysis modules.
@@ -99,9 +99,8 @@ export function DashboardGrid({
                 const isDraggable = !isAnyExpanded;
 
                 // Determine layout class
-                // If expanded OR if chart default is full width
-                const defaultColSpan = chartDef.gridCols?.includes('col-span-2') ? 'col-span-full' : 'col-span-1';
-                const colSpanClass = isExpanded ? 'col-span-full' : defaultColSpan;
+                // If expanded, force full width. Otherwise use registry definition (defaulting to col-span-12 if missing)
+                const colSpanClass = isExpanded ? 'col-span-full' : (chartDef.gridCols || 'col-span-12');
 
                 // Prepare props (logic lifted from page.tsx)
                 const props: any = {};
