@@ -99,7 +99,7 @@ export function PitRejoinGantt() {
     });
 
     return (
-        <div className="w-full h-full p-4 bg-card rounded-xl">
+        <div className="w-full h-full p-4 bg-black rounded-xl">
             <h3 className="text-white font-bold mb-4">Tyre Strategies</h3>
             <div className="w-full h-full min-h-[300px]">
                 <Plot

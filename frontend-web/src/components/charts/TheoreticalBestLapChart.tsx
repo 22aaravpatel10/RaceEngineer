@@ -21,27 +21,31 @@ interface TheoreticalData {
 
 export default function TheoreticalBestLapChart() {
     const { session, selectedDriver } = useF1Store();
-    const [data, setData] = useState<TheoreticalData | null>(null);
+    const [driverA, setDriverA] = useState<string>('VER');
+    const [driverB, setDriverB] = useState<string>(''); // Comparison
+    const [dataA, setDataA] = useState<TheoreticalData | null>(null);
+    const [dataB, setDataB] = useState<TheoreticalData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Default to the first driver in the session if none selected? 
-    // Usually user selects a driver. If not, maybe VER or HAM.
-    const targetDriver = selectedDriver || 'VER';
-
+    // Sync with global selection
     useEffect(() => {
-        if (!session) return;
+        if (selectedDriver) setDriverA(selectedDriver);
+        else if (session?.drivers?.length) setDriverA(session.drivers[0].code);
+    }, [selectedDriver, session]);
+
+    // Fetch Data Logic
+    useEffect(() => {
+        if (!session || !driverA) return;
         setIsLoading(true);
 
-        api.get(`/analysis/theoretical_best/${targetDriver}`)
-            .then(res => {
-                setData(res.data);
-            })
-            .catch(console.error)
-            .finally(() => setIsLoading(false));
-    }, [session, targetDriver]);
+        const p1 = api.get(`/analysis/theoretical_best/${driverA}`).then(res => setDataA(res.data)).catch(console.error);
+        const p2 = driverB ? api.get(`/analysis/theoretical_best/${driverB}`).then(res => setDataB(res.data)).catch(console.error) : Promise.resolve(setDataB(null));
 
-    if (isLoading) return <div className="h-full flex items-center justify-center text-text-secondary">Calculating Theoretical Best...</div>;
-    if (!data || !data.segments) return <div className="h-full flex items-center justify-center text-text-secondary">No Data Available</div>;
+        Promise.all([p1, p2]).finally(() => setIsLoading(false));
+    }, [session, driverA, driverB]);
+
+    if (isLoading && !dataA) return <div className="h-full flex items-center justify-center text-text-secondary">Calculating...</div>;
+    if (!dataA || !dataA.segments) return <div className="h-full flex items-center justify-center text-text-secondary">No Data Available</div>;
 
     // Helper to format time
     const fmtTime = (s: number) => {
@@ -50,17 +54,14 @@ export default function TheoreticalBestLapChart() {
         return `${m}:${sec.padStart(6, '0')}`;
     };
 
-    // Color Logic
-    // 0 loss -> Green
-    // 0.1s loss -> Red
-    // We can use a threshold.
+    // Color Logic for Map (based on Driver A)
     const getColor = (loss: number) => {
         if (loss <= 0.02) return '#22c55e'; // Green (Good)
         if (loss <= 0.1) return '#eab308'; // Yellow (Minor loss)
         return '#ef4444'; // Red (Major loss)
     };
 
-    const traces: Partial<Plotly.PlotData>[] = data.segments.map(seg => ({
+    const traces: Partial<Plotly.PlotData>[] = dataA.segments.map(seg => ({
         x: seg.x,
         y: seg.y,
         mode: 'lines',
@@ -69,30 +70,67 @@ export default function TheoreticalBestLapChart() {
             color: getColor(seg.time_lost),
             width: 4
         },
-        name: `Sector ${seg.sector_index}`,
         hoverinfo: 'text',
-        // Hover text: Sector X: +0.05s lost
         text: `Sector ${seg.sector_index}<br>Loss: +${seg.time_lost.toFixed(3)}s`
     }));
 
-    // Find bounding box for aspect ratio
-    // We want the track to look correct (aspect ratio 1:1)
+    // Bounding Box Logic? Plotly handles it with scaleanchor
 
     return (
-        <div className="w-full h-full flex flex-col relative">
-            {/* Overlay Stats */}
-            <div className="absolute top-2 left-4 z-10 bg-black/60 p-2 rounded backdrop-blur-sm border border-white/10 text-xs sm:text-sm">
-                <div className="font-bold text-white mb-1 border-b border-white/20 pb-1">{data.driver} Theoretical Analysis</div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    <span className="text-text-muted">Actual Best:</span>
-                    <span className="font-mono text-white text-right">{fmtTime(data.actual_best)}</span>
+        <div className="w-full h-full flex flex-col relative group">
+            {/* Controls Overlay */}
+            <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded p-1 flex gap-2">
+                <select
+                    className="bg-[#1C1C1E] text-white text-xs p-1 rounded border border-white/10 outline-none"
+                    value={driverB}
+                    onChange={e => setDriverB(e.target.value)}
+                >
+                    <option value="">Compare...</option>
+                    {session?.drivers.map((d: any) => (
+                        <option key={d.code} value={d.code} disabled={d.code === driverA}>
+                            {d.code}
+                        </option>
+                    ))}
+                </select>
+            </div>
 
-                    <span className="text-text-muted">Theoretical:</span>
-                    <span className="font-mono text-green-400 text-right">{fmtTime(data.theoretical_best)}</span>
-
-                    <span className="text-text-muted">Potential Gain:</span>
-                    <span className="font-mono text-red-400 text-right">-{data.diff.toFixed(3)}s</span>
+            {/* Stats Overlay */}
+            <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+                {/* Driver A Stats */}
+                <div className="bg-black/60 p-2 rounded backdrop-blur-sm border border-white/10 text-xs sm:text-sm shadow-lg">
+                    <div className="font-bold text-white mb-1 border-b border-white/20 pb-1 flex justify-between">
+                        <span>{dataA.driver} Analysis</span>
+                        {/* If B exists, maybe show delta? */}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        <span className="text-text-muted">Actual:</span>
+                        <span className="font-mono text-white text-right">{fmtTime(dataA.actual_best)}</span>
+                        <span className="text-text-muted">Theoretical:</span>
+                        <span className="font-mono text-green-400 text-right">{fmtTime(dataA.theoretical_best)}</span>
+                        <span className="text-text-muted">Gain:</span>
+                        <span className="font-mono text-red-400 text-right">-{dataA.diff.toFixed(3)}s</span>
+                    </div>
                 </div>
+
+                {/* Driver B Stats */}
+                {dataB && (
+                    <div className="bg-black/60 p-2 rounded backdrop-blur-sm border border-white/10 text-xs sm:text-sm shadow-lg">
+                        <div className="font-bold text-gray-300 mb-1 border-b border-white/20 pb-1 flex justify-between">
+                            <span>{dataB.driver} Analysis</span>
+                            <span className={dataB.theoretical_best < dataA.theoretical_best ? "text-green-400" : "text-red-400"}>
+                                {dataB.theoretical_best < dataA.theoretical_best ? "-" : "+"}{Math.abs(dataB.theoretical_best - dataA.theoretical_best).toFixed(3)}s
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                            <span className="text-text-muted">Actual:</span>
+                            <span className="font-mono text-gray-300 text-right">{fmtTime(dataB.actual_best)}</span>
+                            <span className="text-text-muted">Theoretical:</span>
+                            <span className="font-mono text-green-400/80 text-right">{fmtTime(dataB.theoretical_best)}</span>
+                            <span className="text-text-muted">Gain:</span>
+                            <span className="font-mono text-red-400/80 text-right">-{dataB.diff.toFixed(3)}s</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <Plot
@@ -109,14 +147,14 @@ export default function TheoreticalBestLapChart() {
                 }}
                 useResizeHandler
                 className="w-full h-full"
-                config={{ displayModeBar: true, responsive: true, modeBarButtons: [['toImage']] }}
+                config={{ displayModeBar: false }}
             />
 
             {/* Legend */}
-            <div className="absolute bottom-2 right-4 z-10 flex gap-3 text-xs font-bold bg-black/40 p-1 rounded">
+            <div className="absolute bottom-2 right-4 z-10 flex gap-3 text-xs font-bold bg-black/40 p-1 rounded pointer-events-none">
                 <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> Optimal</div>
-                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Minor Loss</div>
-                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> <span className="text-red-400">Major Loss</span></div>
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> Minor</div>
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Major</div>
             </div>
         </div>
     );

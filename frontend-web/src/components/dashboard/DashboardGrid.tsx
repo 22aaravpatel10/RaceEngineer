@@ -107,7 +107,7 @@ export function DashboardGrid({
                 if (chartId === 'telemetry_trace' || chartId === 'quali_telemetry') {
                     if (chartDef.component.name === 'TelemetryTrace' && !telemetryData) {
                         return (
-                            <div key={chartId} className={cn("bg-card rounded-xl border border-white/5 p-8 text-center text-text-secondary shadow-lg", colSpanClass)}>
+                            <div key={chartId} className={cn("bg-black rounded-xl border border-white/5 p-8 text-center text-text-secondary shadow-lg", colSpanClass)}>
                                 Select a driver to view telemetry
                             </div>
                         );
@@ -139,7 +139,7 @@ export function DashboardGrid({
                         onDragOver={(e) => handleDragOver(e, chartId)}
                         onDragEnd={handleDragEnd}
                         className={cn(
-                            "group bg-card rounded-xl border border-white/5 shadow-lg flex flex-col transition-all duration-200 ease-in-out hover:border-white/20 select-none w-full relative",
+                            "group bg-black rounded-xl border border-white/5 shadow-lg flex flex-col transition-all duration-200 ease-in-out hover:border-white/20 select-none w-full relative",
                             colSpanClass,
                             draggedItem === chartId ? "opacity-30 z-50 ring-2 ring-accent scale-[0.98]" : "opacity-100 z-0",
                             isAnyExpanded && !isExpanded ? "opacity-40 grayscale" : "", // Visual cue when locked

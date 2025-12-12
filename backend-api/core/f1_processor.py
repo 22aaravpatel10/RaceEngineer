@@ -7,11 +7,13 @@ import fastf1.plotting
 import pandas as pd
 import numpy as np
 from scipy.interpolate import interp1d
+import requests
 from typing import Optional, Dict, List, Any
 
 
 from core.config import get_team_color
 from core.analysis_engine import analysis_engine
+from fastf1.ergast import Ergast
 
 class F1Processor:
     """Singleton-style processor for F1 data"""
@@ -129,12 +131,6 @@ class F1Processor:
             target_year = year
             is_simulation = False
             
-            if year >= 2025:
-                # Import here to avoid circular dependencies if any (though config is safe)
-                from core.config import GRID_2025, TEAM_COLORS
-                target_year = 2023
-                is_simulation = True
-            
             # Handle aliases for GP names via strict schedule lookup
             # This prevents FastF1's fuzzy matcher from returning British GP when we want Qatar
             schedule = fastf1.get_event_schedule(target_year)
@@ -166,32 +162,7 @@ class F1Processor:
             self.session.load()
             self.laps = self.session.laps
             
-            # If Simulation, Patch the DataFrame
-            if is_simulation:
-                # Create map: Source(2023) -> New(2025)
-                # GRID_2025 is { "LAW": {"source": "PER", ...}, ... }
-                source_to_new = {v['source']: k for k, v in GRID_2025.items()}
-                
-                # We need to preserve drivers who are NOT in the map? 
-                # The map should cover the grid. If a 2023 driver isn't in the map (e.g. SAR), 
-                # they might be mapped to someone (SAI).
-                # If a driver has no mapping, they disappear or keep orig name? 
-                # Better to keep original if not mapped to avoid crashes, but identifying them might be confusing.
-                
-                # Apply mapping to 'Driver' column
-                # Use a function to handle missing keys comfortably
-                self.laps['Driver'] = self.laps['Driver'].apply(lambda x: source_to_new.get(x, x))
-                
-                # Also update Teams if needed?
-                # The GRID_2025 has "team" info. We should update the 'Team' column too.
-                # New(2025) -> Team
-                new_to_team = {k: v['team'] for k, v in GRID_2025.items()}
-                
-                # Now that Driver column is updated to NEW names, we can map to Teams
-                self.laps['Team'] = self.laps['Team'] # Keep original first
-                # Iterate and update (vectorized would be better but this is safe)
-                for new_driver, new_team in new_to_team.items():
-                    self.laps.loc[self.laps['Driver'] == new_driver, 'Team'] = new_team
+
 
             
             # Extract driver list
@@ -742,6 +713,7 @@ class F1Processor:
             "eventName": event['EventName'],
             "location": event['Location'],
             "date": str(event['EventDate'].date()),
+            "round": int(event['RoundNumber']),
             "sessions": []
         }
         
@@ -1180,6 +1152,330 @@ class F1Processor:
                 result.append(x)
         return result
 
+
+
+
+    def get_championship_history(self, year: int, round_limit: int = 99) -> Dict:
+        """Get championship points history (Drivers & Constructors)"""
+        print(f"Fetching Championship History for {year} up to round {round_limit}")
+        # Fetch ALL results for the season (bulk is faster than per-round)
+        try:
+            # Helper to fetch with retries/fallback/pagination
+            def fetch_season_data(endpoint_suffix):
+                # 1. Try Jolpica with Pagination
+                try:
+                    all_races_map = {} # round -> { meta: race_data, results: [] }
+                    
+                    limit = 100
+                    offset = 0
+                    total = None
+                    
+                    while total is None or offset < total:
+                        url = f"http://api.jolpi.ca/ergast/f1/{year}/{endpoint_suffix}"
+                        print(f"Fetching {endpoint_suffix} offset={offset}...")
+                        resp = requests.get(url, params={'limit': limit, 'offset': offset}, timeout=10)
+                        
+                        if resp.status_code != 200:
+                            print(f"Jolpica Error {resp.status_code} at offset {offset}")
+                            break
+                            
+                        data = resp.json()
+                        if total is None:
+                            total = int(data['MRData']['total'])
+                            print(f"Total results to fetch: {total}")
+                            
+                        races = data['MRData']['RaceTable']['Races']
+                        if not races and total > 0:
+                            break # Should not happen if total > offset
+                            
+                        # Process batch
+                        count = 0
+                        for race in races:
+                            r_num = int(race['round'])
+                            if r_num not in all_races_map:
+                                all_races_map[r_num] = {
+                                    "round": race['round'],
+                                    "raceName": race['raceName'],
+                                    "date": race.get('date', ''),
+                                    "Results": [],
+                                    "SprintResults": []
+                                }
+                            
+                            # Append Results or SprintResults
+                            # endpoint "results.json" -> 'Results'
+                            # endpoint "sprint.json" -> 'SprintResults' (usually)
+                            if 'Results' in race:
+                                all_races_map[r_num]['Results'].extend(race['Results'])
+                                count += len(race['Results'])
+                            elif 'SprintResults' in race:
+                                all_races_map[r_num]['SprintResults'].extend(race['SprintResults'])
+                                count += len(race['SprintResults'])
+                                
+                        offset += count
+                        if count == 0:
+                            break # Avoid infinite loop if counts don't match
+                            
+                    # Convert map back to list
+                    final_races = []
+                    for r_num in sorted(all_races_map.keys()):
+                        final_races.append(all_races_map[r_num])
+                    
+                    if final_races:
+                        return final_races
+
+                except Exception as e:
+                    print(f"Jolpica pagination failed: {e}")
+                    import traceback
+                    traceback.print_exc()
+                
+                # 2. Try Official Ergast (HTTP) - Fallback
+                # ... (Keep existing fallback if desired, or relying on Jolpica loop)
+                return []
+
+            # Race Results
+            print(f"Fetching Races...")
+            race_results = fetch_season_data("results.json")
+            
+            # Sprint Results
+            print(f"Fetching Sprints...")
+            sprint_results = fetch_season_data("sprint.json")
+                
+        except Exception as e:
+            print(f"Data Fetch Error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {"drivers": [], "constructors": []}
+            
+        print(f"DEBUG: Race Results: {len(race_results)}")
+        print(f"DEBUG: Sprint Results: {len(sprint_results)}")
+            
+        # Structure: { name: { points: [0, 25, ...], color: ... } }
+        driver_points = {} # name -> { total: 0, history: [], color: ... }
+        team_points = {}   # name -> ...
+        
+        # We need to process round by round to build the "worm"
+        # 1. Identify max round
+        # Determine max round dynamically from the data
+        if not race_results:
+            max_round = 0
+        else:
+            max_round = max([int(r['round']) for r in race_results])
+        print(f"DEBUG: Max found round is {max_round}")
+        
+        # Cap at requested limit
+        target_round = min(max_round, round_limit)
+        
+        # Initialize dictionaries using set of ALL drivers/teams found
+        # (This handles mid-season driver swaps)
+        
+        # Helper to get rounds sorted
+        # Organize data by round: { 1: { 'race': [...], 'sprint': [...] } }
+        round_data = {}
+        for i in range(1, target_round + 1):
+             round_data[i] = {'race': [], 'sprint': []}
+             
+        # Fill Race Data
+        for race in race_results:
+            r_num = int(race['round'])
+            if r_num <= target_round:
+                round_data[r_num]['race'] = race['Results'] # List of results
+                
+        # Fill Sprint Data
+        for sprint in sprint_results:
+             r_num = int(sprint['round'])
+             if r_num <= target_round:
+                 # Jolpica/Ergast uses SprintResults for sprint endpoint
+                 if 'SprintResults' in sprint:
+                     round_data[r_num]['sprint'] = sprint['SprintResults']
+                 elif 'Results' in sprint:
+                     round_data[r_num]['sprint'] = sprint['Results']
+                 else:
+                     print(f"DEBUG: No results found in sprint round {r_num}. Keys: {sprint.keys()}")
+        
+        print(f"DEBUG: Round Data Populated up to round {target_round}")
+        
+        # Accumulate
+        d_totals = {} # driverId -> score
+        t_totals = {} # constructorId -> score
+        d_meta = {} # driverId -> { code: 'VER', color: ... }
+        t_meta = {}
+        
+        d_history = {} # driverId -> [p1, p2, ...]
+        t_history = {}
+        
+        for r in range(1, target_round + 1):
+            # Process Sprint First (usually happens before race)
+            # Actually order doesn't matter for the "Round N" dot, but logically sprint is part of the round.
+            
+            # Helper to process a result list
+            def process_list(res_list, is_sprint=False):
+                for res in res_list:
+                    # Driver Info
+                    drv = res['Driver']
+                    d_id = drv['driverId']
+                    d_code = drv.get('code', drv['familyName'][:3].upper())
+                    
+                    # Constructor Info
+                    cons = res['Constructor']
+                    c_id = cons['constructorId']
+                    c_name = cons['name']
+                    
+                    points = float(res['points'])
+                    
+                    # Colors (from config if possible)
+                    # We need to map Constructor Name/ID to our config keys
+                    # Best guess from ID
+                    
+                    # Update Totals
+                    d_totals[d_id] = d_totals.get(d_id, 0) + points
+                    t_totals[c_id] = t_totals.get(c_id, 0) + points
+                    
+                    # Meta
+                    if d_id not in d_meta:
+                        color = get_team_color(c_name) # function handles partial matching usually
+                        d_meta[d_id] = { "name": d_code, "color": color, "full_name": drv['familyName'] }
+                        
+                    if c_id not in t_meta:
+                        color = get_team_color(c_name)
+                        t_meta[c_id] = { "name": c_name, "color": color }
+            
+            # Run Process
+            if round_data[r]['sprint']:
+                 process_list(round_data[r]['sprint'], is_sprint=True)
+            if round_data[r]['race']:
+                 process_list(round_data[r]['race'])
+            
+            # Record Snapshot for this round
+            # For every seen driver, append their current total
+            # If a driver didn't race, their total remains matching previous
+            for d_id in d_totals.keys():
+                if d_id not in d_history: d_history[d_id] = []
+                # Fill gaps if this driver missed previous rounds (started mid season)
+                # But wait, we iterate 1..N.
+                # If d_id appears at Round 5, d_history[id] is [25] (len 1).
+                # We need to align X-axis.
+                # Ideally we want an array of length R.
+                pass
+        
+        # Re-build clean history arrays
+        # We need final output: [ { name: "VER", data: [ {round:1, pts:25}, ... ] } ]
+        
+        # Second Pass: Simple Build
+        # We need all known entities
+        all_drivers = set()
+        all_teams = set()
+        
+        # Scan everything first to init
+        # (This is slightly inefficient O(N), but safe)
+        
+        # Actually, just run the simulation again and push to lists for EVERYONE
+        # Dictionary of Lists
+        drivers_ts = {} # 'verstappen': [25, 50, ...]
+        teams_ts = {}   # 'red_bull': [40, 80, ...]
+        
+        # Track running totals
+        curr_d = {}
+        curr_t = {}
+        
+        cols_d = {}
+        cols_t = {}
+        names_d = {}
+        names_t = {}
+        
+        for r in range(1, target_round + 1):
+            
+            # 1. Update running totals from this round's results
+            
+            # Sprint
+            for res in round_data[r]['sprint']:
+                pid = res['Driver']['driverId']
+                cid = res['Constructor']['constructorId']
+                pts = float(res['points'])
+                
+                curr_d[pid] = curr_d.get(pid, 0) + pts
+                curr_t[cid] = curr_t.get(cid, 0) + pts
+                
+                # Capture metadata if new
+                if pid not in cols_d:
+                     cname = res['Constructor']['name']
+                     cols_d[pid] = get_team_color(cname)
+                     names_d[pid] = res['Driver'].get('code', res['Driver']['familyName'][:3].upper())
+                if cid not in cols_t:
+                     cname = res['Constructor']['name']
+                     cols_t[cid] = get_team_color(cname)
+                     names_t[cid] = cname
+
+            # Race
+            for res in round_data[r]['race']:
+                pid = res['Driver']['driverId']
+                cid = res['Constructor']['constructorId']
+                pts = float(res['points'])
+                
+                curr_d[pid] = curr_d.get(pid, 0) + pts
+                curr_t[cid] = curr_t.get(cid, 0) + pts
+                
+                if pid not in cols_d:
+                     cname = res['Constructor']['name']
+                     cols_d[pid] = get_team_color(cname)
+                     names_d[pid] = res['Driver'].get('code', res['Driver']['familyName'][:3].upper())
+                if cid not in cols_t:
+                     cname = res['Constructor']['name']
+                     cols_t[cid] = get_team_color(cname)
+                     names_t[cid] = cname
+            
+            # 2. Append current totals to history for ALL seen entities
+            # If a driver hasn't scored yet or hasn't raced, they might not be in curr_d?
+            # If they are in curr_d (even with 0 if we init?), we track them.
+            # But we only discover them when they appear in a result list.
+            # So if LAW joins in Round 15, he won't be in keys for Round 1-14.
+            # We should backfill? Or just let the line start at round 15?
+            # Plotly handles missing data or we can start at 0.
+            # Ideally: 0 points for 1..14.
+            
+            for pid in curr_d:
+                if pid not in drivers_ts: drivers_ts[pid] = [0] * (r - 1) # Backfill zeros
+                drivers_ts[pid].append(curr_d[pid])
+                
+            for cid in curr_t:
+                if cid not in teams_ts: teams_ts[cid] = [0] * (r - 1)
+                teams_ts[cid].append(curr_t[cid])
+                
+        # Format for Frontend
+        res_drivers = []
+        for pid, points in drivers_ts.items():
+            # Pad valid points to target_round if they stopped racing?
+            # The loop goes to target_round, so they should be up to date.
+            # Unless they disappeared? (Ricciardo). They would just hold their score.
+            # But the loop iterates 'curr_d', so if they are in curr_d, they get appended.
+            # Logic above: `for pid in curr_d`.
+            # If Ricciardo (RIC) is in curr_d, he gets an entry. Even if he isn't in this week's results.
+            # Correct.
+            
+            res_drivers.append({
+                "name": names_d.get(pid, pid),
+                "color": cols_d.get(pid, "#888"),
+                "data": [{"round": i+1, "points": p} for i, p in enumerate(points)],
+                "total": points[-1]
+            })
+            
+        res_teams = []
+        for cid, points in teams_ts.items():
+            res_teams.append({
+                "name": names_t.get(cid, cid),
+                "color": cols_t.get(cid, "#888"),
+                "data": [{"round": i+1, "points": p} for i, p in enumerate(points)],
+                "total": points[-1]
+            })
+            
+        # Sort by total points descending
+        res_drivers.sort(key=lambda x: x['total'], reverse=True)
+        res_teams.sort(key=lambda x: x['total'], reverse=True)
+        
+        print(f"DEBUG: Returning {len(res_drivers)} drivers and {len(res_teams)} teams. Top: {res_drivers[0]['name'] if res_drivers else 'None'}")
+        return {
+            "drivers": res_drivers[:20], # Top 20 drivers
+            "constructors": res_teams
+        }
 
 # Global processor instance
 processor = F1Processor()

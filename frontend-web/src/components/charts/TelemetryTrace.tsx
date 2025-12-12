@@ -80,7 +80,7 @@ export function TelemetryTrace({
             line: { color: '#30D158', width: 1 },
             fill: 'tozeroy',
             opacity: 0.2,
-            hoverinfo: 'skip'
+            hovertemplate: `${driver} Throttle: %{y:.0f}%<extra></extra>`
         });
 
         // Secondary Throttle
@@ -94,7 +94,7 @@ export function TelemetryTrace({
                 yaxis: 'y2',
                 line: { color: '#FFD60A', width: 1, dash: 'dot' },
                 opacity: 0.2,
-                hoverinfo: 'skip'
+                hovertemplate: `${secondaryTelemetry.driver} Throttle: %{y:.0f}%<extra></extra>`
             });
         }
 

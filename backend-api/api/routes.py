@@ -153,3 +153,14 @@ async def get_theoretical_best(driver_code: str):
     except Exception as e:
         print(f"Theoretical best error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/weekend/standings/{year}/{round}")
+async def get_standings_history(year: int, round: int):
+    """Get championship standings history up to a specific round"""
+    try:
+        data = processor.get_championship_history(year, round)
+        return {"data": data}
+    except Exception as e:
+        print(f"Standings history error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

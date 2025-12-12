@@ -47,8 +47,13 @@ export function TheWormChart() {
         hovertemplate: '<b>%{fullData.name}</b> P%{text}   +%{y:.2f}s<extra></extra>'
     }));
 
+    // Calculate dynamic Y-axis range
+    const allGaps = data.flatMap(d => d.data.map(p => p.gap));
+    const maxGap = Math.max(...allGaps, 10);
+    const yUpperBound = maxGap > 220 ? 220 : Math.ceil(maxGap * 1.1);
+
     return (
-        <div className="w-full h-full p-4 bg-card rounded-xl flex flex-col">
+        <div className="w-full h-full p-4 bg-black rounded-xl flex flex-col">
             <h3 className="text-white font-bold mb-4">Race Gaps (The Worm)</h3>
             <div className="flex-1 min-h-0 relative">
                 <Plot
@@ -69,7 +74,7 @@ export function TheWormChart() {
                         },
                         yaxis: {
                             title: { text: 'Gap to Leader (s)' },
-                            range: [120, -5], // Clamp: +120s at bottom, -5s (lead) at top
+                            range: [yUpperBound, -5], // Dynamic range: capped at 220 or fits content
                             showgrid: true,
                             gridcolor: '#333'
                         },

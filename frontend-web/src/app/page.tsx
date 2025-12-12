@@ -93,7 +93,7 @@ export default function Dashboard() {
             <main className="flex-1 p-4 h-full overflow-hidden relative flex flex-col gap-4">
 
                 {/* GLOBAL HEADER */}
-                <header className="bg-card rounded-xl p-4 flex items-center justify-between shrink-0 border border-white/5">
+                <header className="bg-black rounded-xl p-4 flex items-center justify-between shrink-0 border border-white/5">
                     <div className="flex items-center gap-4">
                         <h1 className="text-xl font-bold">
                             {viewMode === 'summary' ? 'Weekend Summary' : (session?.eventName || 'F1 Dashboard')}

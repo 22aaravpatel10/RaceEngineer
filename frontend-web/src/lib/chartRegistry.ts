@@ -1,4 +1,4 @@
-import { TelemetryTrace } from '@/components/charts/TelemetryTrace';
+import MultiLapTelemetryChart from '@/components/charts/MultiLapTelemetryChart';
 import { RacePaceChart } from '@/components/charts/RacePaceChart';
 import { TheWormChart } from '@/components/charts/TheWormChart';
 import { FuelCorrectedScatter } from '@/components/charts/FuelCorrectedScatter';
@@ -26,7 +26,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         id: 'telemetry_trace',
         label: 'Multi-Lap Telemetry',
         category: 'PRACTICE',
-        component: TelemetryTrace,
+        component: MultiLapTelemetryChart,
         gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[400px]'
     },
@@ -79,7 +79,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Fuel Corrected Pace',
         category: 'RACE',
         component: FuelCorrectedScatter,
-        gridCols: 'col-span-full lg:col-span-6',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[350px]'
     },
     {

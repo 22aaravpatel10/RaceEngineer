@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { useF1Store } from '@/store/useF1Store';
 // Icons
 import { Trophy, Timer, Flag, AlertTriangle, CloudRain } from 'lucide-react';
+import { StandingsWormChart } from './StandingsWormChart';
 
 interface SessionResult {
     position: number;
@@ -34,6 +35,7 @@ interface WeekendData {
     eventName: string;
     date: string;
     location: string;
+    round: number;
     sessions: SessionSummary[];
 }
 
@@ -93,6 +95,11 @@ export function WeekendSummary() {
                 </div>
             </div>
 
+            {/* Championship Standings Chart */}
+            {data && data.round > 1 && (
+                <StandingsWormChart year={selectedYear} round={data.round} />
+            )}
+
             {/* Sessions Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {data.sessions.map((sess, idx) => {
@@ -101,7 +108,7 @@ export function WeekendSummary() {
                     const hasMore = (sess.results?.length || 0) > 5;
 
                     return (
-                        <div key={idx} className={`bg-card rounded-xl p-4 border border-white/5 shadow-lg flex flex-col transition-all duration-300 ${isExpanded ? 'row-span-2' : ''}`}>
+                        <div key={idx} className={`bg-black rounded-xl p-4 border border-white/5 shadow-lg flex flex-col transition-all duration-300 ${isExpanded ? 'row-span-2' : ''}`}>
                             <div className="flex items-center justify-between mb-4 pb-2 border-b border-white/5">
                                 <h3 className="font-bold text-lg text-white">{sess.name}</h3>
                                 <span className="text-xs px-2 py-1 rounded bg-white/10 text-white/70 font-mono">
