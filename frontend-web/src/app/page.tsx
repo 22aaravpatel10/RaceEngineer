@@ -4,12 +4,8 @@ import { useEffect, useState } from 'react';
 import { useF1Store } from '@/store/useF1Store';
 import { initSession, getDriverLaps, getLapTelemetry } from '@/lib/api';
 import { Sidebar } from '@/components/dashboard/Sidebar';
-import { TelemetryTrace } from '@/components/charts/TelemetryTrace';
-import { RacePaceChart } from '@/components/charts/RacePaceChart';
-import { TheWormChart } from '@/components/charts/TheWormChart';
-import { FuelCorrectedScatter } from '@/components/charts/FuelCorrectedScatter';
-import { GhostDeltaTrace } from '@/components/charts/GhostDeltaTrace';
-import { PitRejoinGantt } from '@/components/charts/PitRejoinGantt';
+import { CHART_REGISTRY } from '@/lib/chartRegistry';
+import { cn } from '@/lib/utils';
 
 interface Telemetry {
     driver: string;
@@ -23,7 +19,7 @@ interface Telemetry {
 }
 
 export default function Dashboard() {
-    const { session, setSession, setLoading, isLoading, selectedDriver, selectedMode, setDriverLaps, driverLaps, selectedYear, selectedGP, selectedSessionType } = useF1Store();
+    const { session, setSession, setLoading, isLoading, selectedDriver, activeCharts, setDriverLaps, driverLaps, selectedYear, selectedGP, selectedSessionType } = useF1Store();
     const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -107,61 +103,61 @@ export default function Dashboard() {
                 </header>
 
                 {/* Charts Area */}
-                <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                <div className="flex-1 overflow-y-auto p-2">
                     {!selectedDriver ? (
-                        <div className="h-64 flex items-center justify-center text-text-secondary bg-card rounded-xl">
-                            Select a driver from the sidebar to view telemetry
+                        <div className="h-full flex flex-col items-center justify-center text-text-secondary bg-card/50 rounded-xl border-2 border-dashed border-white/5 gap-4">
+                            <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center">
+                                <span className="text-3xl">🏎️</span>
+                            </div>
+                            <p>Select a driver from the sidebar to start analysis</p>
                         </div>
                     ) : (
-                        <>
-                            {selectedMode === 'QUALI' && (
-                                <div className="grid grid-cols-1 gap-4">
-                                    <div className="h-[400px]">
-                                        {telemetry ? (
-                                            <TelemetryTrace
-                                                driver={telemetry.driver}
-                                                color={telemetry.color}
-                                                distance={telemetry.distance}
-                                                speed={telemetry.speed}
-                                                throttle={telemetry.throttle}
-                                                brake={telemetry.brake}
-                                                corners={telemetry.corners}
-                                                brakingZones={telemetry.brakingZones}
-                                            />
-                                        ) : <div>Loading Telemetry...</div>}
-                                    </div>
-                                    <div className="h-[350px]">
-                                        <GhostDeltaTrace />
-                                    </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pb-20">
+                            {activeCharts.length === 0 && (
+                                <div className="col-span-full h-64 flex items-center justify-center text-text-secondary">
+                                    No charts selected. Open the sidebar menu to enable charts.
                                 </div>
                             )}
 
-                            {selectedMode === 'RACE' && (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    <div className="h-[350px] col-span-1 lg:col-span-2">
-                                        <TheWormChart />
-                                    </div>
-                                    <div className="h-[350px]">
-                                        <FuelCorrectedScatter />
-                                    </div>
-                                    <div className="h-[350px] col-span-1 lg:col-span-2">
-                                        <PitRejoinGantt />
-                                    </div>
-                                </div>
-                            )}
+                            {activeCharts.map(chartId => {
+                                const chartDef = CHART_REGISTRY.find(c => c.id === chartId);
+                                if (!chartDef) return null;
 
-                            {selectedMode === 'PRACTICE' && (
-                                <div className="h-[400px]">
-                                    {driverLaps.length > 0 ? (
-                                        <RacePaceChart
-                                            driver={selectedDriver}
-                                            laps={driverLaps}
-                                            color={driverColor}
-                                        />
-                                    ) : <div>No Practice Data</div>}
-                                </div>
-                            )}
-                        </>
+                                const ChartComponent = chartDef.component;
+
+                                // Special props for some charts if needed
+                                const props: any = {};
+                                if (chartId === 'telemetry_trace' || chartId === 'quali_telemetry') {
+                                    if (!telemetry) return <div key={chartId} className="h-[400px] flex items-center justify-center bg-card rounded-xl">Loading Telemetry...</div>;
+                                    props.driver = telemetry.driver;
+                                    props.color = telemetry.color;
+                                    props.distance = telemetry.distance;
+                                    props.speed = telemetry.speed;
+                                    props.throttle = telemetry.throttle;
+                                    props.brake = telemetry.brake;
+                                    props.corners = telemetry.corners;
+                                    props.brakingZones = telemetry.brakingZones;
+                                }
+                                if (chartId === 'race_pace_sim') {
+                                    if (driverLaps.length === 0) return null;
+                                    props.laps = driverLaps;
+                                    props.driver = selectedDriver;
+                                    props.color = driverColor;
+                                }
+
+                                return (
+                                    <div
+                                        key={chartId}
+                                        className={cn(
+                                            chartDef.gridCols || "col-span-1",
+                                            chartDef.height || "h-[350px]"
+                                        )}
+                                    >
+                                        <ChartComponent {...props} />
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
                 </div>
             </div>

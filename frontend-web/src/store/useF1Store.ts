@@ -54,6 +54,7 @@ interface F1State {
     selectedSessionType: string;
     selectedDriver: string | null;
     selectedMode: SessionMode;
+    activeCharts: string[];
     hoveredLap: number | null;
 
     // Data
@@ -66,6 +67,7 @@ interface F1State {
     setError: (error: string | null) => void;
     selectDriver: (code: string) => void;
     setMode: (mode: SessionMode) => void;
+    toggleChart: (chartId: string) => void;
     setHoveredLap: (lap: number | null) => void;
     setDriverLaps: (laps: LapData[]) => void;
 }
@@ -75,11 +77,13 @@ export const useF1Store = create<F1State>((set) => ({
     session: null,
     isLoading: false,
     error: null,
+    // State
     selectedYear: 2023,
     selectedGP: "Abu Dhabi",
     selectedSessionType: "R",
     selectedDriver: null,
     selectedMode: 'RACE',
+    activeCharts: ['the_worm', 'strategy_gantt'], // Default charts
     hoveredLap: null,
     driverLaps: [],
 
@@ -90,6 +94,14 @@ export const useF1Store = create<F1State>((set) => ({
     setError: (error) => set({ error, isLoading: false }),
     selectDriver: (code) => set({ selectedDriver: code }),
     setMode: (mode) => set({ selectedMode: mode }),
+    toggleChart: (chartId) => set((state) => {
+        const isActive = state.activeCharts.includes(chartId);
+        return {
+            activeCharts: isActive
+                ? state.activeCharts.filter(id => id !== chartId)
+                : [...state.activeCharts, chartId]
+        };
+    }),
     setHoveredLap: (lap) => set({ hoveredLap: lap }),
     setDriverLaps: (laps) => set({ driverLaps: laps }),
 }));

@@ -2,12 +2,7 @@ import { useEffect, useState } from 'react';
 import { useF1Store, SessionMode } from '@/store/useF1Store';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
-
-const modes: { id: SessionMode; label: string }[] = [
-    { id: 'PRACTICE', label: 'FP' },
-    { id: 'QUALI', label: 'QUALI' },
-    { id: 'RACE', label: 'RACE' },
-];
+import { CHART_REGISTRY } from '@/lib/chartRegistry';
 
 interface Race {
     round: number;
@@ -15,7 +10,7 @@ interface Race {
 }
 
 export function Sidebar() {
-    const { session, selectedDriver, selectedMode, selectDriver, setMode, selectedYear, selectedGP, selectedSessionType, setSelection } = useF1Store();
+    const { session, selectedDriver, selectedMode, selectDriver, setMode, selectedYear, selectedGP, selectedSessionType, setSelection, activeCharts, toggleChart } = useF1Store();
     const [seasons, setSeasons] = useState<number[]>([]);
     const [races, setRaces] = useState<Race[]>([]);
 
@@ -81,21 +76,44 @@ export function Sidebar() {
                 </div>
             </div>
 
-            {/* Mode Switcher */}
-            <div className="flex gap-1 p-1 bg-background rounded-lg">
-                {modes.map((mode) => (
-                    <button
-                        key={mode.id}
-                        onClick={() => setMode(mode.id)}
-                        className={cn(
-                            'flex-1 py-2 px-3 rounded-md text-xs font-bold transition-all',
-                            selectedMode === mode.id
-                                ? 'bg-card-hover text-white shadow'
-                                : 'text-text-secondary hover:text-white'
+            {/* Chart Selection (Accordion) */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                {['PRACTICE', 'QUALI', 'RACE'].map((category) => (
+                    <div key={category} className="bg-background rounded-lg overflow-hidden border border-white/5">
+                        <button
+                            onClick={() => setMode(category as SessionMode)}
+                            className={cn(
+                                "w-full flex items-center justify-between p-3 text-xs font-bold transition-colors",
+                                selectedMode === category
+                                    ? "bg-white/10 text-white"
+                                    : "text-text-secondary hover:text-white hover:bg-white/5"
+                            )}
+                        >
+                            <span>{category} DASHBOARD</span>
+                            <span className={cn("transition-transform", selectedMode === category ? "rotate-90" : "")}>
+                                ›
+                            </span>
+                        </button>
+
+                        {/* Expanded Content */}
+                        {selectedMode === category && (
+                            <div className="p-2 space-y-1 bg-black/20">
+                                {CHART_REGISTRY.filter(c => c.category === category).map(chart => (
+                                    <label key={chart.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={activeCharts.includes(chart.id)}
+                                            onChange={() => toggleChart(chart.id)}
+                                            className="rounded border-white/20 bg-transparent text-accent focus:ring-accent"
+                                        />
+                                        <span className="text-xs text-text-secondary select-none">
+                                            {chart.label}
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
                         )}
-                    >
-                        {mode.label}
-                    </button>
+                    </div>
                 ))}
             </div>
 
