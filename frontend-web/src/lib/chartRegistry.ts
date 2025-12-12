@@ -16,7 +16,7 @@ export interface ChartDefinition {
     label: string;
     category: ChartCategory;
     component: React.ComponentType<any>;
-    gridCols?: string; // e.g., 'col-span-1' or 'col-span-2'
+    gridCols?: string; // e.g., 'col-span-6' (half) or 'col-span-12' (full)
     height?: string; // tailwind height class
 }
 
@@ -27,7 +27,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Multi-Lap Telemetry',
         category: 'PRACTICE',
         component: TelemetryTrace,
-        gridCols: 'col-span-12',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[400px]'
     },
     {
@@ -35,7 +35,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Race Pace Simulation',
         category: 'PRACTICE',
         component: RacePaceChart,
-        gridCols: 'col-span-6',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[400px]'
     },
 
@@ -45,7 +45,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Fastest Lap Telemetry',
         category: 'QUALI',
         component: FastestLapTelemetryChart,
-        gridCols: 'col-span-12',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[400px]'
     },
     {
@@ -53,7 +53,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Ghost Delta Trace',
         category: 'QUALI',
         component: GhostDeltaTrace,
-        gridCols: 'col-span-6',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[350px]'
     },
     {
@@ -61,7 +61,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Theoretical Best Lap',
         category: 'QUALI',
         component: TheoreticalBestLapChart,
-        gridCols: 'col-span-12',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[500px]'
     },
 
@@ -71,7 +71,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Race Gaps (The Worm)',
         category: 'RACE',
         component: TheWormChart,
-        gridCols: 'col-span-12',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[500px]'
     },
     {
@@ -79,7 +79,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Fuel Corrected Pace',
         category: 'RACE',
         component: FuelCorrectedScatter,
-        gridCols: 'col-span-6',
+        gridCols: 'col-span-full lg:col-span-6',
         height: 'h-[350px]'
     },
     {
@@ -87,7 +87,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Tyre Strategy Gantt',
         component: PitRejoinGantt,
         category: 'RACE',
-        gridCols: 'col-span-12',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[600px]'
     },
     {
@@ -95,7 +95,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Top Speed History',
         component: TopSpeedChart,
         category: 'RACE',
-        gridCols: 'col-span-12',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[400px]'
     },
     {
@@ -103,7 +103,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         label: 'Lap Time Consistency',
         category: 'RACE',
         component: ConsistencyBoxPlot,
-        gridCols: 'col-span-12',
+        gridCols: 'col-span-full lg:col-span-12',
         height: 'h-[400px]'
     }
 ];
