@@ -10,6 +10,9 @@ from scipy.interpolate import interp1d
 from typing import Optional, Dict, List, Any
 
 
+from core.config import get_team_color
+from core.analysis_engine import analysis_engine
+
 class F1Processor:
     """Singleton-style processor for F1 data"""
     
@@ -18,43 +21,116 @@ class F1Processor:
         self.laps = None
         self.session_info = {}
     
-    def load_session(self, year: int, gp: str, session_type: str = 'Q') -> Dict:
+    def get_seasons(self) -> List[int]:
+        """Return supported seasons"""
+        return [2023, 2024, 2025]
+        
+    def get_races(self, year: int) -> List[Dict]:
+        """Return list of races for a given year"""
+        try:
+            schedule = fastf1.get_event_schedule(year)
+            races = []
+            for _, event in schedule.iterrows():
+                # Filter out testing sessions if needed, though they are useful
+                if event['EventName'] == "Pre-Season Testing":
+                    continue
+                    
+                races.append({
+                    "round": int(event['RoundNumber']),
+                    "name": event['EventName'],
+                    "location": event['Location'],
+                    "date": str(event['EventDate'].date())
+                })
+            return races
+        except Exception as e:
+            return []
+
+    
+    def load_session(self, year: int, gp: str, session_type: str = 'R') -> Dict:
         """Load a session and return basic info"""
         try:
-            self.session = fastf1.get_session(year, gp, session_type)
+            # --- 2025 SIMULATION LOGIC ---
+            # If requesting 2025/2026, we simulate using 2023 data
+            target_year = year
+            is_simulation = False
+            
+            if year >= 2025:
+                # Import here to avoid circular dependencies if any (though config is safe)
+                from core.config import GRID_2025, TEAM_COLORS
+                target_year = 2023
+                is_simulation = True
+            
+            # Handle aliases for GP names if needed, or rely on FastF1's fuzzy match
+            self.session = fastf1.get_session(target_year, gp, session_type)
             self.session.load()
             self.laps = self.session.laps
+            
+            # If Simulation, Patch the DataFrame
+            if is_simulation:
+                # Create map: Source(2023) -> New(2025)
+                # GRID_2025 is { "LAW": {"source": "PER", ...}, ... }
+                source_to_new = {v['source']: k for k, v in GRID_2025.items()}
+                
+                # We need to preserve drivers who are NOT in the map? 
+                # The map should cover the grid. If a 2023 driver isn't in the map (e.g. SAR), 
+                # they might be mapped to someone (SAI).
+                # If a driver has no mapping, they disappear or keep orig name? 
+                # Better to keep original if not mapped to avoid crashes, but identifying them might be confusing.
+                
+                # Apply mapping to 'Driver' column
+                # Use a function to handle missing keys comfortably
+                self.laps['Driver'] = self.laps['Driver'].apply(lambda x: source_to_new.get(x, x))
+                
+                # Also update Teams if needed?
+                # The GRID_2025 has "team" info. We should update the 'Team' column too.
+                # New(2025) -> Team
+                new_to_team = {k: v['team'] for k, v in GRID_2025.items()}
+                
+                # Now that Driver column is updated to NEW names, we can map to Teams
+                self.laps['Team'] = self.laps['Team'] # Keep original first
+                # Iterate and update (vectorized would be better but this is safe)
+                for new_driver, new_team in new_to_team.items():
+                    self.laps.loc[self.laps['Driver'] == new_driver, 'Team'] = new_team
+
             
             # Extract driver list
             drivers = []
             for driver in self.laps['Driver'].unique():
                 try:
                     d_laps = self.laps.pick_driver(driver)
-                    fastest = d_laps.pick_fastest()
-                    if fastest is None:
-                        continue
+                    # Use 'pick_fastest' carefully - if session is just starting it might be empty
+                    # For a generic list, we just need the driver info
                     
-                    team = d_laps['Team'].iloc[0]
-                    try:
-                        color = fastf1.plotting.team_color(team)
-                    except:
-                        color = "#FFFFFF"
+                    team = d_laps['Team'].iloc[0] if not d_laps.empty else "Unknown"
+                    color = get_team_color(team)
                     
-                    lap_time = str(fastest['LapTime']).split('days')[-1].strip()
-                    if '.' in lap_time:
-                        lap_time = lap_time[:-3]
+                    best_time = "N/A"
+                    best_time_val = float('inf')
+                    position = 99
+                    
+                    if not d_laps.empty:
+                        fastest = d_laps.pick_fastest()
+                        if fastest is not None and pd.notna(fastest['LapTime']):
+                            best_time_val = fastest['LapTime'].total_seconds()
+                            lap_time = str(fastest['LapTime']).split('days')[-1].strip()
+                            if '.' in lap_time:
+                                lap_time = lap_time[:-3]
+                            best_time = lap_time
+                            position = int(fastest['Position']) if pd.notna(fastest['Position']) else 99
                     
                     drivers.append({
                         "code": driver,
                         "team": team,
                         "color": color,
-                        "bestLap": lap_time,
-                        "position": int(fastest['Position']) if pd.notna(fastest['Position']) else 99
+                        "bestLap": best_time,
+                        "position": position,
+                        "bestLapVal": best_time_val
                     })
                 except Exception:
                     continue
             
-            drivers.sort(key=lambda x: x['position'])
+            # Sort by Best Lap Time (fastest first), then by Position as fallback
+            drivers.sort(key=lambda x: (x['bestLapVal'], x['position']))
             
             # Extract circuit info
             corners = []
@@ -70,7 +146,7 @@ class F1Processor:
                 pass
             
             self.session_info = {
-                "year": year,
+                "year": year, # Report the REQUESTED year
                 "gp": gp,
                 "sessionType": session_type,
                 "eventName": self.session.event['EventName'],
@@ -131,10 +207,7 @@ class F1Processor:
         
         # Get team color
         team = d_laps['Team'].iloc[0]
-        try:
-            color = fastf1.plotting.team_color(team)
-        except:
-            color = "#0A84FF"
+        color = get_team_color(team)
         
         # Calculate braking zones
         car['Braking'] = (car['Brake'] > 0) & (car['Throttle'] < 10)
@@ -188,11 +261,8 @@ class F1Processor:
                 })
             
             # Get color
-            try:
-                team = d_laps['Team'].iloc[0]
-                color = fastf1.plotting.team_color(team)
-            except:
-                color = "#FFFFFF"
+            team = d_laps['Team'].iloc[0]
+            color = get_team_color(team)
             
             result["drivers"][driver] = {
                 "gaps": gaps,
@@ -214,6 +284,7 @@ class F1Processor:
         
         for driver in drivers:
             d_laps = self.laps.pick_driver(driver)
+            d_laps = d_laps.sort_values('LapNumber')
             
             # Group consecutive laps by compound
             stints = []
@@ -243,11 +314,8 @@ class F1Processor:
                 })
             
             # Get color
-            try:
-                team = d_laps['Team'].iloc[0]
-                color = fastf1.plotting.team_color(team)
-            except:
-                color = "#FFFFFF"
+            team = d_laps['Team'].iloc[0]
+            color = get_team_color(team)
             
             result.append({
                 "driver": driver,
@@ -276,16 +344,11 @@ class F1Processor:
         speed2 = interp1d(car2['Distance'], car2['Speed'], fill_value="extrapolate")(common_dist)
         
         # Get colors
-        try:
-            t1 = self.laps.pick_driver(driver1)['Team'].iloc[0]
-            c1 = fastf1.plotting.team_color(t1)
-        except:
-            c1 = "#0A84FF"
-        try:
-            t2 = self.laps.pick_driver(driver2)['Team'].iloc[0]
-            c2 = fastf1.plotting.team_color(t2)
-        except:
-            c2 = "#FF3B30"
+        t1 = self.laps.pick_driver(driver1)['Team'].iloc[0]
+        c1 = get_team_color(t1)
+        
+        t2 = self.laps.pick_driver(driver2)['Team'].iloc[0]
+        c2 = get_team_color(t2)
         
         return {
             "driver1": {"code": driver1, "color": c1, "speed": speed1.tolist()},
@@ -295,6 +358,73 @@ class F1Processor:
             "corners": self.session_info.get('corners', [])
         }
     
+    
+    def get_fuel_corrected_laps(self, driver_code: str) -> List[Dict]:
+        """Get actual vs fuel corrected lap times"""
+        if self.laps is None:
+            raise Exception("No session loaded")
+            
+        d_laps = self.laps.pick_driver(driver_code)
+        return analysis_engine.calculate_fuel_correction(d_laps)
+        
+    def get_race_gaps_v2(self) -> Dict:
+        """Get advanced gap analysis (The Worm)"""
+        if self.laps is None:
+            raise Exception("No session loaded")
+            
+        drivers = self.laps['Driver'].unique()
+        gaps_data = analysis_engine.calculate_race_gaps(self.laps, drivers)
+        
+        # Format for frontend (add colors)
+        result = []
+        for drv in drivers:
+            if drv not in gaps_data:
+                continue
+                
+            color = get_team_color(self.laps.pick_driver(drv)['Team'].iloc[0])
+            result.append({
+                "driver": drv,
+                "color": color,
+                "data": gaps_data[drv]
+            })
+            
+        return result
+        
+    def get_ghost_trace(self, driver1: str, driver2: str) -> Dict:
+        """Get ghost delta trace"""
+        if self.laps is None:
+            raise Exception("No session loaded")
+            
+        lap1 = self.laps.pick_driver(driver1).pick_fastest()
+        lap2 = self.laps.pick_driver(driver2).pick_fastest()
+        
+        if lap1 is None or lap2 is None:
+            raise Exception("One of the drivers has no laps")
+            
+        tel1 = lap1.get_car_data().add_distance().add_relative_distance()
+        # We need 'Time' column in car data? 'get_car_data' returns Time indexed? 
+        # Actually fastf1 telemetry Time is the index or a column depending.
+        # usually we need to merge with lap start time? 
+        # Wait, get_car_data returns telemetry relative to LAP START. So Time starts at 0.
+        # However, fastf1 car data 'Time' column is a Timedelta.
+        
+        # Check if Time is in columns
+        if 'Time' not in tel1.columns:
+             tel1['Time'] = tel1.index # If indexed by time
+        
+        tel2 = lap2.get_car_data().add_distance().add_relative_distance()
+        if 'Time' not in tel2.columns:
+             tel2['Time'] = tel2.index
+
+        delta_data = analysis_engine.calculate_ghost_delta(tel1, tel2)
+        
+        return {
+            "driver1": driver1,
+            "driver2": driver2,
+            "distance": delta_data.get('distance', []),
+            "delta": delta_data.get('delta', [])
+        }
+
     def _clean_array(self, arr) -> List:
         """Clean numpy/pandas arrays for JSON"""
         result = []

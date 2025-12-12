@@ -1,7 +1,7 @@
-'use client';
-
+import { useEffect, useState } from 'react';
 import { useF1Store, SessionMode } from '@/store/useF1Store';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 const modes: { id: SessionMode; label: string }[] = [
     { id: 'PRACTICE', label: 'FP' },
@@ -9,13 +9,80 @@ const modes: { id: SessionMode; label: string }[] = [
     { id: 'RACE', label: 'RACE' },
 ];
 
+interface Race {
+    round: number;
+    name: string;
+}
+
 export function Sidebar() {
-    const { session, selectedDriver, selectedMode, selectDriver, setMode } = useF1Store();
+    const { session, selectedDriver, selectedMode, selectDriver, setMode, selectedYear, selectedGP, selectedSessionType, setSelection } = useF1Store();
+    const [seasons, setSeasons] = useState<number[]>([]);
+    const [races, setRaces] = useState<Race[]>([]);
+
+    // Load Seasons
+    useEffect(() => {
+        api.get('/seasons').then(res => setSeasons(res.data)).catch(console.error);
+    }, []);
+
+    // Load Races when year changes
+    useEffect(() => {
+        api.get('/races', { params: { year: selectedYear } })
+            .then(res => {
+                setRaces(res.data);
+            })
+            .catch(console.error);
+    }, [selectedYear]);
 
     return (
-        <aside className="w-64 bg-card rounded-xl p-4 flex flex-col h-full">
+        <aside className="w-64 bg-card rounded-xl p-4 flex flex-col h-full gap-4">
+
+            {/* Season & GP Selection */}
+            <div className="flex flex-col gap-3 p-3 bg-background rounded-lg">
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-text-secondary uppercase">Season</label>
+                    <select
+                        value={selectedYear}
+                        onChange={(e) => setSelection(Number(e.target.value), "", selectedSessionType)}
+                        className="bg-card text-white p-1.5 rounded text-sm border border-white/10 outline-none focus:border-accent"
+                    >
+                        {seasons.map(y => (
+                            <option key={y} value={y}>{y}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-text-secondary uppercase">Grand Prix</label>
+                    <select
+                        value={selectedGP}
+                        onChange={(e) => setSelection(selectedYear, e.target.value, selectedSessionType)}
+                        className="bg-card text-white p-1.5 rounded text-sm border border-white/10 outline-none focus:border-accent"
+                    >
+                        <option value="" disabled>Select GP</option>
+                        {races.map(r => (
+                            <option key={r.round} value={r.name}>{r.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-text-secondary uppercase">Session</label>
+                    <select
+                        value={selectedSessionType}
+                        onChange={(e) => setSelection(selectedYear, selectedGP, e.target.value)}
+                        className="bg-card text-white p-1.5 rounded text-sm border border-white/10 outline-none focus:border-accent"
+                    >
+                        <option value="FP1">Practice 1</option>
+                        <option value="FP2">Practice 2</option>
+                        <option value="FP3">Practice 3</option>
+                        <option value="S">Sprint</option>
+                        <option value="SS">Sprint Shootout</option>
+                        <option value="Q">Qualifying</option>
+                        <option value="R">Race</option>
+                    </select>
+                </div>
+            </div>
+
             {/* Mode Switcher */}
-            <div className="flex gap-1 p-1 bg-background rounded-lg mb-4">
+            <div className="flex gap-1 p-1 bg-background rounded-lg">
                 {modes.map((mode) => (
                     <button
                         key={mode.id}
@@ -33,7 +100,7 @@ export function Sidebar() {
             </div>
 
             {/* Driver List */}
-            <h2 className="text-text-secondary text-xs font-bold uppercase tracking-wider mb-3">
+            <h2 className="text-text-secondary text-xs font-bold uppercase tracking-wider mt-2">
                 Live Grid
             </h2>
 
@@ -72,7 +139,7 @@ export function Sidebar() {
 
             {/* Session Info */}
             {session && (
-                <div className="mt-4 pt-4 border-t border-card-hover">
+                <div className="mt-auto pt-4 border-t border-card-hover">
                     <p className="text-text-secondary text-xs">
                         {session.eventName} • {session.sessionType}
                     </p>

@@ -9,6 +9,22 @@ from core.f1_processor import processor
 router = APIRouter()
 
 
+@router.get("/seasons")
+async def get_seasons():
+    """Get list of supported seasons"""
+    return processor.get_seasons()
+
+
+@router.get("/races")
+async def get_races(year: int = Query(..., description="Season year")):
+    """Get list of races for a specific year"""
+    try:
+        races = processor.get_races(year)
+        return races
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/session/init")
 async def init_session(
     year: int = Query(..., description="Season year"),
@@ -45,9 +61,9 @@ async def get_lap_telemetry(driver_code: str, lap_number: int):
 
 @router.get("/race/gaps")
 async def get_race_gaps():
-    """Get gap to leader evolution for all drivers"""
+    """Get gap to leader evolution for all drivers (Worm Chart)"""
     try:
-        gaps = processor.get_race_gaps()
+        gaps = processor.get_race_gaps_v2()
         return gaps
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -69,5 +85,25 @@ async def compare_drivers(driver1: str, driver2: str):
     try:
         comparison = processor.compare_drivers(driver1.upper(), driver2.upper())
         return comparison
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analysis/fuel/{driver_code}")
+async def get_fuel_analysis(driver_code: str):
+    """Get fuel-corrected lap times"""
+    try:
+        data = processor.get_fuel_corrected_laps(driver_code.upper())
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analysis/ghost/{driver1}/{driver2}")
+async def get_ghost_analysis(driver1: str, driver2: str):
+    """Get GPS Ghost Delta trace"""
+    try:
+        data = processor.get_ghost_trace(driver1.upper(), driver2.upper())
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

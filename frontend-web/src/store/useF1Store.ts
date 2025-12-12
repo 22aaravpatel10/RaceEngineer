@@ -49,6 +49,9 @@ interface F1State {
     error: string | null;
 
     // Selection
+    selectedYear: number;
+    selectedGP: string;
+    selectedSessionType: string;
     selectedDriver: string | null;
     selectedMode: SessionMode;
     hoveredLap: number | null;
@@ -58,6 +61,7 @@ interface F1State {
 
     // Actions
     setSession: (session: SessionInfo) => void;
+    setSelection: (year: number, gp: string, sessionType: string) => void;
     setLoading: (loading: boolean) => void;
     setError: (error: string | null) => void;
     selectDriver: (code: string) => void;
@@ -71,13 +75,17 @@ export const useF1Store = create<F1State>((set) => ({
     session: null,
     isLoading: false,
     error: null,
+    selectedYear: 2023,
+    selectedGP: "Abu Dhabi",
+    selectedSessionType: "R",
     selectedDriver: null,
-    selectedMode: 'QUALI',
+    selectedMode: 'RACE',
     hoveredLap: null,
     driverLaps: [],
 
     // Actions
     setSession: (session) => set({ session, error: null }),
+    setSelection: (year, gp, sessionType) => set({ selectedYear: year, selectedGP: gp, selectedSessionType: sessionType }),
     setLoading: (isLoading) => set({ isLoading }),
     setError: (error) => set({ error, isLoading: false }),
     selectDriver: (code) => set({ selectedDriver: code }),

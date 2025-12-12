@@ -6,6 +6,10 @@ import { initSession, getDriverLaps, getLapTelemetry } from '@/lib/api';
 import { Sidebar } from '@/components/dashboard/Sidebar';
 import { TelemetryTrace } from '@/components/charts/TelemetryTrace';
 import { RacePaceChart } from '@/components/charts/RacePaceChart';
+import { TheWormChart } from '@/components/charts/TheWormChart';
+import { FuelCorrectedScatter } from '@/components/charts/FuelCorrectedScatter';
+import { GhostDeltaTrace } from '@/components/charts/GhostDeltaTrace';
+import { PitRejoinGantt } from '@/components/charts/PitRejoinGantt';
 
 interface Telemetry {
     driver: string;
@@ -19,27 +23,28 @@ interface Telemetry {
 }
 
 export default function Dashboard() {
-    const { session, setSession, setLoading, isLoading, selectedDriver, selectedMode, setDriverLaps, driverLaps } = useF1Store();
+    const { session, setSession, setLoading, isLoading, selectedDriver, selectedMode, setDriverLaps, driverLaps, selectedYear, selectedGP, selectedSessionType } = useF1Store();
     const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // Load session on mount
+    // Load session on mount and when selection changes
     useEffect(() => {
         async function loadSession() {
+            if (!selectedGP) return;
             setLoading(true);
+            setSession(null); // Clear previous session to force update UI
             try {
-                // Default to 2024 Bahrain Qualifying
-                const data = await initSession(2024, 'Bahrain', 'Q');
+                const data = await initSession(selectedYear, selectedGP, selectedSessionType);
                 setSession(data);
             } catch (err) {
-                setError('Failed to load session. Make sure the backend is running on port 5000.');
+                setError('Failed to load session. Make sure the backend is running on port 8000.');
                 console.error(err);
             } finally {
                 setLoading(false);
             }
         }
         loadSession();
-    }, [setSession, setLoading]);
+    }, [selectedYear, selectedGP, selectedSessionType, setSession, setLoading]);
 
     // Load driver data when selected
     useEffect(() => {
@@ -77,7 +82,7 @@ export default function Dashboard() {
             <Sidebar />
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col gap-4">
+            <div className="flex-1 flex flex-col gap-4 overflow-hidden">
                 {/* Header */}
                 <header className="bg-card rounded-xl p-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -102,38 +107,61 @@ export default function Dashboard() {
                 </header>
 
                 {/* Charts Area */}
-                <div className="flex-1 bg-card rounded-xl p-4 overflow-hidden">
+                <div className="flex-1 overflow-y-auto space-y-4 pr-2">
                     {!selectedDriver ? (
-                        <div className="h-full flex items-center justify-center text-text-secondary">
+                        <div className="h-64 flex items-center justify-center text-text-secondary bg-card rounded-xl">
                             Select a driver from the sidebar to view telemetry
                         </div>
-                    ) : selectedMode === 'QUALI' && telemetry ? (
-                        <TelemetryTrace
-                            driver={telemetry.driver}
-                            color={telemetry.color}
-                            distance={telemetry.distance}
-                            speed={telemetry.speed}
-                            throttle={telemetry.throttle}
-                            brake={telemetry.brake}
-                            corners={telemetry.corners}
-                            brakingZones={telemetry.brakingZones}
-                        />
-                    ) : selectedMode === 'PRACTICE' && driverLaps.length > 0 ? (
-                        <RacePaceChart
-                            driver={selectedDriver}
-                            laps={driverLaps}
-                            color={driverColor}
-                        />
-                    ) : selectedMode === 'RACE' && driverLaps.length > 0 ? (
-                        <RacePaceChart
-                            driver={selectedDriver}
-                            laps={driverLaps}
-                            color={driverColor}
-                        />
                     ) : (
-                        <div className="h-full flex items-center justify-center text-text-secondary">
-                            Loading data...
-                        </div>
+                        <>
+                            {selectedMode === 'QUALI' && (
+                                <div className="grid grid-cols-1 gap-4">
+                                    <div className="h-[400px]">
+                                        {telemetry ? (
+                                            <TelemetryTrace
+                                                driver={telemetry.driver}
+                                                color={telemetry.color}
+                                                distance={telemetry.distance}
+                                                speed={telemetry.speed}
+                                                throttle={telemetry.throttle}
+                                                brake={telemetry.brake}
+                                                corners={telemetry.corners}
+                                                brakingZones={telemetry.brakingZones}
+                                            />
+                                        ) : <div>Loading Telemetry...</div>}
+                                    </div>
+                                    <div className="h-[350px]">
+                                        <GhostDeltaTrace />
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedMode === 'RACE' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                    <div className="h-[350px] col-span-1 lg:col-span-2">
+                                        <TheWormChart />
+                                    </div>
+                                    <div className="h-[350px]">
+                                        <FuelCorrectedScatter />
+                                    </div>
+                                    <div className="h-[350px] col-span-1 lg:col-span-2">
+                                        <PitRejoinGantt />
+                                    </div>
+                                </div>
+                            )}
+
+                            {selectedMode === 'PRACTICE' && (
+                                <div className="h-[400px]">
+                                    {driverLaps.length > 0 ? (
+                                        <RacePaceChart
+                                            driver={selectedDriver}
+                                            laps={driverLaps}
+                                            color={driverColor}
+                                        />
+                                    ) : <div>No Practice Data</div>}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>
