@@ -55,7 +55,7 @@ export function GapToLeader({ drivers, maxLap }: GapToLeaderProps) {
         <Plot
             data={data}
             layout={layout}
-            config={{ displayModeBar: false, responsive: true }}
+            config={{ displayModeBar: true, modeBarButtons: [['toImage']], responsive: true }}
             style={{ width: '100%', height: '100%' }}
         />
     );

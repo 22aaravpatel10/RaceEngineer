@@ -131,3 +131,25 @@ async def get_weekend_summary(year: int, gp: str):
     except Exception as e:
          print(f"Weekend summary error: {e}")
          raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/race/topspeed")
+async def get_top_speed():
+    """Get Top Speed Analysis (Heatmap data)"""
+    try:
+        data = processor.get_top_speed_analysis()
+        return data
+    except Exception as e:
+        print(f"Top speed error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analysis/theoretical_best/{driver_code}")
+async def get_theoretical_best(driver_code: str):
+    """Get Theoretical Best Lap analysis"""
+    try:
+        data = processor.get_theoretical_best_lap(driver_code.upper())
+        return data
+    except Exception as e:
+        print(f"Theoretical best error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

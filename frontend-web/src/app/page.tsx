@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useF1Store } from '@/store/useF1Store';
 import { initSession, getDriverLaps, getLapTelemetry } from '@/lib/api';
 import { Sidebar } from '@/components/dashboard/Sidebar';
+import { DashboardGrid } from '@/components/dashboard/DashboardGrid';
 import { WeekendSummary } from '@/components/dashboard/WeekendSummary'; // [NEW]
 import { CHART_REGISTRY } from '@/lib/chartRegistry';
 import { cn } from '@/lib/utils';
@@ -22,7 +23,7 @@ interface Telemetry {
 }
 
 export default function Dashboard() {
-    const { session, setSession, setLoading, isLoading, selectedDriver, activeCharts, setDriverLaps, driverLaps, selectedYear, selectedGP, selectedSessionType, viewMode, setViewMode } = useF1Store();
+    const { session, setSession, setLoading, isLoading, selectedDriver, activeCharts, setDriverLaps, driverLaps, selectedYear, selectedGP, selectedSessionType, viewMode, setViewMode, reorderCharts } = useF1Store();
     const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -157,56 +158,15 @@ export default function Dashboard() {
                                     <p>Select a Grand Prix session from the sidebar</p>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                    {activeCharts.length === 0 && (
-                                        <div className="col-span-full h-64 flex items-center justify-center text-text-secondary">
-                                            No charts selected. Open Sidebar to add charts.
-                                        </div>
-                                    )}
-
-                                    {activeCharts.map(chartId => {
-                                        const chartDef = CHART_REGISTRY.find(c => c.id === chartId);
-                                        if (!chartDef) return null;
-
-                                        const ChartComponent = chartDef.component;
-
-                                        // Prepare props
-                                        const props: any = {};
-
-                                        // Telemetry Props
-                                        if (chartId === 'telemetry_trace' || chartId === 'quali_telemetry') {
-                                            if (!telemetry) return <div key={chartId} className="h-[400px] flex items-center justify-center bg-card rounded-xl border border-white/5">Waiting for Telemetry...</div>;
-                                            props.driver = telemetry.driver;
-                                            props.color = telemetry.color;
-                                            props.distance = telemetry.distance;
-                                            props.speed = telemetry.speed;
-                                            props.throttle = telemetry.throttle;
-                                            props.brake = telemetry.brake;
-                                            props.corners = telemetry.corners;
-                                            props.brakingZones = telemetry.brakingZones;
-                                        }
-
-                                        // Race Pace Props
-                                        if (chartId === 'race_pace_sim') {
-                                            if (driverLaps.length === 0) return null;
-                                            props.laps = driverLaps;
-                                            props.driver = selectedDriver;
-                                            props.color = driverColor;
-                                        }
-
-                                        return (
-                                            <div
-                                                key={chartId}
-                                                className={cn(
-                                                    "bg-card rounded-xl p-1 relative overflow-hidden resize-y min-h-[350px] border border-white/5 shadow-lg transition-all",
-                                                    activeCharts.length === 1 ? "col-span-full h-[calc(100vh-140px)]" : cn(chartDef.gridCols, chartDef.height)
-                                                )}
-                                            >
-                                                <ChartComponent {...props} />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                <DashboardGrid
+                                    activeCharts={activeCharts}
+                                    onReorder={reorderCharts}
+                                    telemetryData={telemetry}
+                                    driverLaps={driverLaps}
+                                    selectedDriver={selectedDriver}
+                                    driverColor={driverColor}
+                                    session={session}
+                                />
                             )}
                         </div>
                     </>

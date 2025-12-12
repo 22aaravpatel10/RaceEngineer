@@ -135,8 +135,34 @@ class F1Processor:
                 target_year = 2023
                 is_simulation = True
             
-            # Handle aliases for GP names if needed, or rely on FastF1's fuzzy match
-            self.session = fastf1.get_session(target_year, gp, session_type)
+            # Handle aliases for GP names via strict schedule lookup
+            # This prevents FastF1's fuzzy matcher from returning British GP when we want Qatar
+            schedule = fastf1.get_event_schedule(target_year)
+            matches = schedule[schedule['EventName'].str.lower().str.contains(gp.lower())]
+            
+            if matches.empty:
+                # Fallback: Maybe user passed "British" and schedule says "British Grand Prix" -> OK
+                # But if empty, we might have an alias issue. 
+                # Try fuzzy matching manually or just trust get_session? 
+                # No, the user issue is Over-Fuzzy matching.
+                # Let's try to match "Location" too.
+                matches = schedule[schedule['Location'].str.lower().str.contains(gp.lower())]
+                
+            if matches.empty:
+                 # If still empty, let's try the direct call as a last resort, but warn
+                 print(f"WARNING: Strict lookup failed for '{gp}'. Trying direct fuzzy load...")
+                 self.session = fastf1.get_session(target_year, gp, session_type)
+            else:
+                 # Take the best match (Round > 0 preferred)
+                 if len(matches) > 1:
+                     r_matches = matches[matches['RoundNumber'] > 0]
+                     if not r_matches.empty:
+                         matches = r_matches
+                 
+                 event_name = matches.iloc[0]['EventName']
+                 print(f"Resolved '{gp}' to '{event_name}'")
+                 self.session = fastf1.get_session(target_year, event_name, session_type)
+            
             self.session.load()
             self.laps = self.session.laps
             
@@ -277,13 +303,25 @@ class F1Processor:
     
     def get_lap_telemetry(self, driver_code: str, lap_number: int) -> Dict:
         """Get granular telemetry for a specific lap"""
+        print(f"DEBUG: get_lap_telemetry for {driver_code} Lap {lap_number}")
         if self.laps is None:
             raise Exception("No session loaded")
         
-        d_laps = self.laps.pick_driver(driver_code)
-        lap = d_laps[d_laps['LapNumber'] == lap_number].iloc[0]
-        
-        car = lap.get_car_data().add_distance()
+        try:
+            d_laps = self.laps.pick_driver(driver_code)
+            lap = d_laps[d_laps['LapNumber'] == lap_number].iloc[0]
+            
+            # Check if telemetry is already loaded
+            car = lap.get_car_data().add_distance()
+            
+            if car.empty:
+                 print(f"DEBUG: Car data empty for {driver_code} Lap {lap_number}")
+                 raise Exception("Telemetry data not available for this lap")
+                 
+        except Exception as e:
+            print(f"DEBUG: Telemetry Error: {e}")
+            raise e
+
         
         # Get team color
         team = d_laps['Team'].iloc[0]
@@ -564,14 +602,30 @@ class F1Processor:
         
     def get_ghost_trace(self, driver1: str, driver2: str) -> Dict:
         """Get ghost delta trace"""
+        print(f"DEBUG: Ghost Analysis {driver1} vs {driver2}")
         if self.laps is None:
+            print("Ghost Error: No session loaded")
             raise Exception("No session loaded")
             
-        lap1 = self.laps.pick_driver(driver1).pick_fastest()
-        lap2 = self.laps.pick_driver(driver2).pick_fastest()
+        d1_laps = self.laps.pick_driver(driver1)
+        d2_laps = self.laps.pick_driver(driver2)
         
-        if lap1 is None or lap2 is None:
-            raise Exception("One of the drivers has no laps")
+        if d1_laps.empty or d2_laps.empty:
+             print(f"Ghost Error: Missing laps for {driver1} or {driver2}")
+             raise Exception(f"Missing laps for {driver1} or {driver2}")
+
+        lap1 = d1_laps.pick_fastest()
+        lap2 = d2_laps.pick_fastest()
+        
+        if lap1 is None or pd.isna(lap1['LapTime']):
+             print(f"Ghost Error: No valid fastest lap for {driver1}")
+             raise Exception(f"No valid fastest lap for {driver1}")
+             
+        if lap2 is None or pd.isna(lap2['LapTime']):
+             print(f"Ghost Error: No valid fastest lap for {driver2}")
+             raise Exception(f"No valid fastest lap for {driver2}")
+
+        print(f"DEBUG: Ghost Laps - {driver1}: {lap1['LapTime']}, {driver2}: {lap2['LapTime']}")
             
         tel1 = lap1.get_car_data().add_distance().add_relative_distance()
         if 'Time' not in tel1.columns:
@@ -587,11 +641,12 @@ class F1Processor:
             "driver1": driver1,
             "driver2": driver2,
             "distance": delta_data.get('distance', []),
-            "delta": delta_data.get('delta', [])
+            "delta": delta_data.get('delta', []),
+            "corners": self.session_info.get('corners', [])
         }
 
     def get_top_speed_analysis(self) -> Dict:
-        """Get Max Speed (Speed Trap) per lap for all drivers"""
+        """Get Max Speed Heatmap Data (Top 15 speeds per driver)"""
         if self.laps is None:
             raise Exception("No session loaded")
             
@@ -606,40 +661,46 @@ class F1Processor:
             elif 'SpeedFL' in self.laps.columns:
                 speed_col = 'SpeedFL'
             else:
+                print(f"DEBUG: No speed columns found. Available: {list(self.laps.columns)}")
                 return {} # No speed data
+        
+        print(f"DEBUG: Using speed column: {speed_col}")
         
         for driver in drivers:
             d_laps = self.laps.pick_driver(driver)
             if d_laps.empty:
                 continue
             
-            # Identify Team Color
             team = d_laps['Team'].iloc[0]
             color = get_team_color(team)
             
-            # Extract Speed Data
-            lap_speeds = []
-            for _, lap in d_laps.iterrows():
-                # Safety checks
-                if pd.isna(lap['LapNumber']): continue
+            # Extract Speed Data - Get ALL speeds for this driver in this session
+            # Drop NaNs and zeros
+            speeds = d_laps[speed_col].dropna()
+            speeds = speeds[speeds > 10].astype(float).tolist() # Filter out pit/slow
+            
+            if not speeds: continue
+            
+            # Sort Descending (Fastest first)
+            speeds.sort(reverse=True)
+            
+            # Take Top 15
+            top_15 = speeds[:15]
+            
+            # Calculate Average of the Top 15 (or fewer)
+            avg_speed = sum(top_15) / len(top_15) if top_15 else 0
+            
+            result.append({
+                "driver": driver,
+                "team": team,
+                "color": color,
+                "top_speeds": top_15,
+                "average": avg_speed,
+                "max_speed": top_15[0] if top_15 else 0
+            })
                 
-                speed_val = lap.get(speed_col)
-                if pd.isna(speed_val): continue
-                
-                lap_speeds.append({
-                    "lap": int(lap['LapNumber']),
-                    "speed": float(speed_val)
-                })
-                
-            if lap_speeds:
-                result.append({
-                    "driver": driver,
-                    "color": color,
-                    "data": lap_speeds
-                })
-                
-        # Sort by fastest single speed achieved
-        result.sort(key=lambda x: max([l['speed'] for l in x['data']]) if x['data'] else 0, reverse=True)
+        # Sort Drivers by their SINGLE FASTEST speed (descending)
+        result.sort(key=lambda x: x['max_speed'], reverse=True)
             
         return {"data": result, "metric": speed_col}
 
@@ -772,92 +833,122 @@ class F1Processor:
 
     def _get_session_results(self, session, session_type: str) -> List[Dict]:
         """
-        Robustly extract session results.
-        Prioritizes official session.results if valid.
-        Falls back to calculating from session.laps if official results are missing/broken (Ergast fail).
+        Robustly extract session results with correct Gap calculations.
         """
         results_data = []
         
-        # 1. Try Official Results first
+        # --- STRATEGY 1: OFFICIAL RESULTS (Preferred) ---
+        use_official = False
         if hasattr(session, 'results') and not session.results.empty:
-            # Check if Position looks valid
             positions = session.results['Position']
-            
-            # [STRICT VALIDATION]
-            # If too many positions are 0 (e.g. Ergast partial failure), discard it
-            # FastF1 often fills broken data with 0
-            zero_count = (positions == 0).sum()
-            total_count = len(positions)
-            is_garbage = (zero_count / total_count) > 0.5
-            
-            if not positions.isna().all() and not is_garbage:
-                 # Looks good, use it
-                 # Sort by Position, defaulting NaNs to bottom
-                 top = session.results.copy()
-                 top['Position'] = top['Position'].fillna(999)
-                 top = top.sort_values(by='Position')
-                 
-                 # Limit to 20 (all drivers) instead of 10
-                 # The frontend will handle slicing
-                 
-                 for _, row in top.iterrows():
-                     # Safe extraction
-                     try:
-                         driver = row.get('Abbreviation', 'UNK')
-                         team = row.get('TeamName', '')
-                         color = get_team_color(team)
-                         
-                         pos_val = row.get('Position')
-                         position = int(pos_val) if pd.notna(pos_val) and pos_val != 999 else 0
-                         
-                         status = str(row.get('Status', 'Finished'))
-                         
-                         time_str = "No Time"
-                         # Time Logic
-                         if session_type in ['R', 'S']:
-                             t = row.get('Time')
-                             if pd.notna(t):
-                                 ts = t.total_seconds()
-                                 m = int(ts // 60)
-                                 s = ts % 60
-                                 time_str = f"{m}:{s:06.3f}"
-                             elif status.startswith("+"):
-                                 time_str = status
-                             elif position == 1:
-                                 time_str = "Winner"
-                             else:
-                                 time_str = status
-                         else:
-                             # Q/FP - Best Lap
-                             for col in ['Q3', 'Q2', 'Q1', 'Time']:
-                                 val = row.get(col)
-                                 if pd.notna(val):
-                                     t_str = str(val).split('days')[-1].strip()
-                                     if '.' in t_str: t_str = t_str[:-3]
-                                     time_str = t_str
-                                     break
-                         
-                         results_data.append({
-                             "position": position,
-                             "driver": driver,
-                             "team": team,
-                             "time": time_str,
-                             "color": color,
-                             "status": status
-                         })
-                     except: continue
-                 
-                 if results_data:
-                     return results_data
+            # specific check: ensure positions are not all 0/NaN
+            if not positions.isna().all() and not (positions == 0).all():
+                # [OVERRIDE] For Race/Sprint, we often skip official results if they are unreliable
+                # But if we want Gaps, Official is best if available.
+                # However, previous issues showed Official data often has wrong order.
+                # Let's trust official ONLY if not Race/Sprint OR if the user wants it.
+                # Actually, for Gaps, Official Results usually contain 'Time' column as Timedelta.
+                use_official = True
+                
+        # FORCE FALLBACK for Race/Sprint to avoid "Random Order" bug unless we are sure
+        if session_type in ['R', 'S']:
+             use_official = False
 
-        # 2. Fallback: Calculate from Laps
-        # This happens if Ergast is down or data is garbage
-        if session.laps is None or session.laps.empty:
-            return []
+        if use_official:
+            # 1. Prepare Winner's Time for Gap Calculation
+            winner_time = None
+            try:
+                # Get P1 row safely
+                p1_row = session.results[session.results['Position'] == 1]
+                if not p1_row.empty:
+                    winner_time = p1_row.iloc[0].get('Time') # This is a Timedelta
+            except: pass
+
+            top = session.results.sort_values(by='Position') # Get all
             
-        # print(f"Calculating fallback results for {session_type}...")
+            for _, row in top.iterrows():
+                try:
+                    driver = row.get('Abbreviation', 'UNK')
+                    team = row.get('TeamName', '')
+                    color = get_team_color(team)
+                    position = int(row.get('Position', 0))
+                    status = str(row.get('Status', 'Finished'))
+                    
+                    time_str = "No Time"
+                    
+                    # --- RACE / SPRINT LOGIC ---
+                    if session_type in ['R', 'S']:
+                        driver_time = row.get('Time')
+                        
+                        # Case A: The Winner
+                        if position == 1:
+                            if pd.notna(driver_time):
+                                ts = driver_time.total_seconds()
+                                h = int(ts // 3600)
+                                m = int((ts % 3600) // 60)
+                                s = ts % 60
+                                if h > 0:
+                                    time_str = f"{h}:{m:02d}:{s:06.3f}"
+                                else:
+                                    time_str = f"{m}:{s:06.3f}"
+                            else:
+                                time_str = "Winner"
+                                
+                        # Case B: The Rest (Calculate Gap)
+                        else:
+                            # 1. Try to calculate mathematical gap
+                            if pd.notna(driver_time) and pd.notna(winner_time):
+                                delta = driver_time - winner_time
+                                dt_s = delta.total_seconds()
+                                time_str = f"+{dt_s:.3f}s"
+                            
+                            # 2. If no time (Lapped or DNF), use Status
+                            else:
+                                # Status often contains "+1 Lap" or "DNF"
+                                time_str = status
+
+                    # --- QUALI / PRACTICE LOGIC ---
+                    else:
+                        # For Quali, we want the Fastest Lap set in the latest session
+                        # FastF1 results usually put the best relevant time in 'Time' or Q1/Q2/Q3 cols
+                        
+                        best_val = pd.NaT
+                        # Priority: Time > Q3 > Q2 > Q1 (and SQ3/SQ2/SQ1)
+                        # We check SQ columns first as they are specific to Sprint Shootout
+                        cols_to_check = ['SQ3', 'SQ2', 'SQ1', 'Q3', 'Q2', 'Q1', 'Time']
+                        for col in cols_to_check:
+                            val = row.get(col)
+                            if pd.notna(val):
+                                # Check if it's a valid time (not 0 days 00:00:00)
+                                if isinstance(val, (pd.Timedelta, datetime.timedelta)) and val.total_seconds() > 0:
+                                    best_val = val
+                                    break
+                                # If it's just a string or other non-null, take it?
+                                elif not isinstance(val, (pd.Timedelta, datetime.timedelta)) and val:
+                                     # Sometimes it's a string from FastF1? Rarely.
+                                     pass
+                                
+                        if pd.notna(best_val):
+                             t_str = str(best_val).split('days')[-1].strip()
+                             if '.' in t_str: t_str = t_str[:-3]
+                             time_str = t_str
+                    
+                    results_data.append({
+                        "position": position,
+                        "driver": driver,
+                        "team": team,
+                        "time": time_str,
+                        "color": color,
+                        "status": status
+                    })
+                except Exception as e: 
+                    continue
+                    
+            return results_data
+
+        # --- STRATEGY 2: FALLBACK (Calculated from Laps) ---
+        if session.laps is None or session.laps.empty: return []
         
-        # Get list of drivers
         drivers = session.laps['Driver'].unique()
         leaderboard = []
         
@@ -867,110 +958,216 @@ class F1Processor:
                 if d_laps.empty: continue
                 
                 team = d_laps['Team'].iloc[0]
+                
+                # 1. Best Lap (for Quali)
                 fastest = d_laps.pick_fastest()
+                best_lap_time = fastest['LapTime'].total_seconds() if fastest is not None and pd.notna(fastest['LapTime']) else float('inf')
                 
-                best_time = float('inf')
-                best_time_str = "No Time"
-                
-                if fastest is not None and pd.notna(fastest['LapTime']):
-                    best_time = fastest['LapTime'].total_seconds()
-                    tmp_str = str(fastest['LapTime']).split('days')[-1].strip()
-                    if '.' in tmp_str: tmp_str = tmp_str[:-3]
-                    best_time_str = tmp_str
-                
+                # 2. Race Finish Time (Cumulative)
+                # We use the 'Time' column of the LAST LAP. This is the session time when they crossed the line.
+                last_lap = d_laps.iloc[-1]
+                finish_time = last_lap['Time'] # Timedelta
                 laps_completed = len(d_laps)
-                
-                # Calculate Total Race Time (for sorting when positions are missing)
-                # We filter out NaT lap times just in case (e.g. unfinished laps)
-                valid_laps = d_laps.dropna(subset=['LapTime'])
-                total_race_time = valid_laps['LapTime'].sum().total_seconds() if not valid_laps.empty else float('inf')
-                
-                # Try to get position from last lap
-                last_pos = 999
-                if not d_laps.empty and 'Position' in d_laps.columns:
-                     # Check the last lap
-                     last_lap = d_laps.iloc[-1]
-                     p = last_lap['Position']
-                     if pd.notna(p):
-                         last_pos = int(p)
                 
                 leaderboard.append({
                     "driver": drv,
                     "team": team,
-                    "best_time": best_time,
-                    "best_time_str": best_time_str,
-                    "last_pos": last_pos,
-                    "laps_count": laps_completed,
-                    "total_race_time": total_race_time
+                    "best_lap_val": best_lap_time,
+                    "finish_time": finish_time,
+                    "laps_completed": laps_completed,
+                    "last_pos": int(last_lap['Position']) if pd.notna(last_lap['Position']) else 999
                 })
-            except Exception as e:
-                # Log but continue to next driver
-                print(f"Error processing driver {drv} fallback: {e}")
-                continue
+            except: continue
             
-        # SORTING LOGIC
+        # SORTING
         if session_type in ['R', 'S']:
-            # Race: Sort by Laps Completed (desc) FIRST, then Total Race Time (asc)
-            leaderboard.sort(key=lambda x: (-x['laps_count'], x['total_race_time']))
-        else:
-            # FP/Quali: Sort by Best Time
-            leaderboard.sort(key=lambda x: x['best_time'])
+            # Sort by Laps Completed (Desc), then Finish Time (Asc)
+            # This handles lapped cars correctly (more laps = higher pos)
+            leaderboard.sort(key=lambda x: (-x['laps_completed'], x['finish_time']))
             
-        # Determine Max Laps for Status Inference
-        max_laps = 0
-        winner_time = 0
-        if leaderboard:
-            max_laps = max(d['laps_count'] for d in leaderboard)
-            if session_type in ['R', 'S']:
-                 winner_time = leaderboard[0]['total_race_time']
-
-        # Format for output
-        for i, row in enumerate(leaderboard): # Show all
-            pos = i + 1
-            display_pos = pos
-            
-            # Infer Status & Time Display
-            status = "Calculated"
-            display_time = row['best_time_str'] # Default for Quali/FP
-            
-            if session_type in ['R', 'S']:
-                display_time = "DNF" # Default if not status finished
+            # Calculate Gaps
+            if leaderboard:
+                winner = leaderboard[0]
+                winner_time = winner['finish_time']
                 
-                if row['laps_count'] == max_laps:
-                    status = "Finished"
-                    if display_pos == 1: 
-                        status = "Winner"
-                        # Format total time
-                        total_s = row['total_race_time']
-                        h = int(total_s // 3600)
-                        m = int((total_s % 3600) // 60)
-                        s = total_s % 60
-                        display_time = f"{h}:{m:02d}:{s:06.3f}"
+                for i, row in enumerate(leaderboard):
+                    # Winner
+                    if i == 0:
+                        # Format winner time
+                        ts = winner_time.total_seconds()
+                        h = int(ts // 3600)
+                        m = int((ts % 3600) // 60)
+                        s = ts % 60
+                        row['display_time'] = f"{h}:{m:02d}:{s:06.3f}"
+                    # Others
                     else:
-                        # Gap
-                        gap = row['total_race_time'] - winner_time
-                        display_time = f"+{gap:.3f}s"
-                elif row['laps_count'] < max_laps * 0.9:
-                    # Completed less than 90% distance -> DNF
-                    status = "DNF"
-                    display_time = "DNF"
+                        # Check if on same lap
+                        if row['laps_completed'] == winner['laps_completed']:
+                             gap = row['finish_time'] - winner_time
+                             row['display_time'] = f"+{gap.total_seconds():.3f}s"
+                        else:
+                             lap_diff = winner['laps_completed'] - row['laps_completed']
+                             # Check if DNF (e.g. < 90% distance)
+                             if row['laps_completed'] < winner['laps_completed'] * 0.9:
+                                 row['display_time'] = "DNF"
+                             else:
+                                 row['display_time'] = f"+{lap_diff} Lap{'s' if lap_diff > 1 else ''}"
+        else:
+            # Quali: Sort by Best Lap
+            leaderboard.sort(key=lambda x: x['best_lap_val'])
+            for row in leaderboard:
+                # Format lap time
+                if row['best_lap_val'] == float('inf'):
+                    row['display_time'] = "No Time"
                 else:
-                    # Lapped
-                    diff = max_laps - row['laps_count']
-                    status = f"+{diff} Lap{'s' if diff > 1 else ''}"
-                    display_time = status
+                    m = int(row['best_lap_val'] // 60)
+                    s = row['best_lap_val'] % 60
+                    row['display_time'] = f"{m}:{s:06.3f}"
             
+        # Final Format
+        for i, row in enumerate(leaderboard):
             results_data.append({
-                "position": display_pos,
+                "position": i + 1,
                 "driver": row['driver'],
                 "team": row['team'],
-                "time": display_time,
+                "time": row.get('display_time', '-'), 
                 "color": get_team_color(row['team']),
-                "status": status
+                "status": "Calculated"
             })
             
         return results_data
         
+    def get_theoretical_best_lap(self, driver: str) -> Dict:
+        """
+        Calculate Theoretical Best Lap using Mini-Sectors.
+        """
+        if self.laps is None:
+            print("Theoretical Best: No session loaded")
+            raise Exception("No session loaded")
+
+        print(f"DEBUG: Theoretical Best for {driver}")
+
+        # 1. Filter Laps
+        # Must be accurate, not in/out
+        driver_laps = self.laps.pick_driver(driver)
+        if driver_laps.empty:
+            print(f"DEBUG: No laps for driver {driver}")
+            return {}
+            
+        d_laps = driver_laps.pick_accurate()
+        if d_laps.empty:
+            print(f"DEBUG: No ACCURATE laps for driver {driver} (Total: {len(driver_laps)})")
+            # Fallback: Try all valid laps (not in/out) if accurate is too strict
+            d_laps = driver_laps.pick_wo_box()
+            if d_laps.empty:
+                 return {}
+
+        # 2. Reference Lap (The Actual Fastest)
+        fastest_lap = d_laps.pick_fastest()
+        if fastest_lap is None or pd.isna(fastest_lap['LapTime']):
+             print("DEBUG: No fastest lap found")
+             return {}
+             
+        try:
+            ref_tel = fastest_lap.get_telemetry()
+        except Exception as e:
+             print(f"DEBUG: Failed to get ref telemetry: {e}")
+             return {}
+             
+        # Normalize distance (ensure strictly increasing for interp)
+        max_dist = ref_tel['Distance'].max()
+        
+        # 3. Define N Sectors
+        N_SECTORS = 25
+        chunk_size = max_dist / N_SECTORS
+        
+        # We need to collect sector times for ALL valid laps
+        # Matrix: [Lap_i][Sector_j]
+        sector_times_matrix = []
+        
+        # Pre-calculate lap objects to iterate
+        valid_laps_telemetry = []
+        
+        for _, lap in d_laps.iterrows():
+            try:
+                # We need telemetry for interpolation
+                tel = lap.get_telemetry()
+                if tel.empty: continue
+                
+                # Setup interpolation: Time (s) vs Distance (m)
+                # Ensure Distance is sorted for np.interp
+                tel = tel.sort_values(by='Distance')
+                dist_vals = tel['Distance'].values
+                time_vals = tel['Time'].dt.total_seconds().values
+                
+                valid_laps_telemetry.append((dist_vals, time_vals))
+            except:
+                continue
+                
+        if not valid_laps_telemetry:
+            return {}
+            
+        # 4. Processing Loop
+        boundaries = [i * chunk_size for i in range(N_SECTORS + 1)]
+        all_laps_sectors = [] 
+        
+        for dist_series, time_series in valid_laps_telemetry:
+            # Interpolate times at all boundaries
+            t_boundaries = np.interp(boundaries, dist_series, time_series)
+            # Calculate durations
+            sector_durations = np.diff(t_boundaries)
+            all_laps_sectors.append(sector_durations)
+            
+        if not all_laps_sectors:
+            return {}
+
+        # 5. Find Theoretical Best
+        matrix = np.array(all_laps_sectors)
+        best_sector_times = np.min(matrix, axis=0) # Shape: (25,)
+        theoretical_best_time = np.sum(best_sector_times)
+        
+        # 6. Compare with Actual Best Lap (Reference)
+        ref_dist = ref_tel['Distance'].values
+        ref_time = ref_tel['Time'].dt.total_seconds().values
+        ref_t_bounds = np.interp(boundaries, ref_dist, ref_time)
+        ref_sector_times = np.diff(ref_t_bounds)
+        actual_best_time = np.sum(ref_sector_times) 
+        
+        # Calculate Delta/Gain per sector
+        deltas = ref_sector_times - best_sector_times
+        
+        # 7. Prepare Visualization Data (Track Map Segments)
+        map_segments = []
+        
+        if 'X' not in ref_tel.columns:
+            return {"error": "No GPS data"}
+            
+        for i in range(N_SECTORS):
+            d_start = boundaries[i]
+            d_end = boundaries[i+1]
+            
+            # Filter ref_tel for points in this range
+            mask = (ref_tel['Distance'] >= d_start) & (ref_tel['Distance'] <= d_end)
+            segment_points = ref_tel[mask]
+            
+            if segment_points.empty: continue
+            
+            map_segments.append({
+                "sector_index": i + 1,
+                "x": segment_points['X'].tolist(),
+                "y": segment_points['Y'].tolist(),
+                "time_lost": float(deltas[i]),
+                "pct_lost": float(deltas[i] / ref_sector_times[i]) if ref_sector_times[i] > 0 else 0
+            })
+            
+        return {
+            "driver": driver,
+            "theoretical_best": float(theoretical_best_time),
+            "actual_best": float(actual_best_time),
+            "diff": float(actual_best_time - theoretical_best_time),
+            "segments": map_segments
+        }
+
     def _clean_array(self, arr) -> List:
         """Clean numpy/pandas arrays for JSON"""
         result = []

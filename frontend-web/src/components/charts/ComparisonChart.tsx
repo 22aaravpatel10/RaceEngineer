@@ -89,7 +89,7 @@ export function ComparisonChart({ driver1, driver2, distance, corners = [] }: Co
         <Plot
             data={data}
             layout={layout}
-            config={{ displayModeBar: false, responsive: true }}
+            config={{ displayModeBar: true, modeBarButtons: [['toImage']], responsive: true }}
             style={{ width: '100%', height: '100%' }}
         />
     );

@@ -129,7 +129,7 @@ export function PitRejoinGantt() {
                     }}
                     useResizeHandler={true}
                     style={{ width: '100%', height: '100%', minHeight: '500px' }}
-                    config={{ displayModeBar: false }}
+                    config={{ displayModeBar: true, modeBarButtons: [['toImage']] }}
                 />
             </div>
         </div>

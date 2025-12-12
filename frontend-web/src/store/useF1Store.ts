@@ -56,18 +56,20 @@ interface F1State {
     selectedMode: SessionMode;
     activeCharts: string[];
     hoveredLap: number | null;
+    viewMode: 'dashboard' | 'summary';
 
     // Data
     driverLaps: LapData[];
 
     // Actions
-    setSession: (session: SessionInfo) => void;
+    setSession: (session: SessionInfo | null) => void;
     setSelection: (year: number, gp: string, sessionType: string) => void;
     setLoading: (loading: boolean) => void;
     setError: (error: string | null) => void;
     selectDriver: (code: string) => void;
     setMode: (mode: SessionMode) => void;
     toggleChart: (chartId: string) => void;
+    reorderCharts: (orderedCharts: string[]) => void;
     setHoveredLap: (lap: number | null) => void;
     setDriverLaps: (laps: LapData[]) => void;
     setViewMode: (mode: 'dashboard' | 'summary') => void;
@@ -104,6 +106,7 @@ export const useF1Store = create<F1State>((set) => ({
         if (updatedCharts.length === 0) updatedCharts = [chartId]; // Keep one active
         return { activeCharts: updatedCharts };
     }),
+    reorderCharts: (orderedCharts) => set({ activeCharts: orderedCharts }),
     setHoveredLap: (lap) => set({ hoveredLap: lap }),
     setDriverLaps: (laps) => set({ driverLaps: laps }),
     setViewMode: (mode) => set({ viewMode: mode }),

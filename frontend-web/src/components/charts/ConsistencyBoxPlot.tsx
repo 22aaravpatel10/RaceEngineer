@@ -55,7 +55,7 @@ export function ConsistencyBoxPlot() {
                     }}
                     style={{ width: '100%', height: '100%' }}
                     useResizeHandler={true}
-                    config={{ displayModeBar: false }}
+                    config={{ displayModeBar: true, modeBarButtons: [['toImage']] }}
                 />
             </div>
         </div>

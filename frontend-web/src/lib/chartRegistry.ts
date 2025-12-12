@@ -3,9 +3,11 @@ import { RacePaceChart } from '@/components/charts/RacePaceChart';
 import { TheWormChart } from '@/components/charts/TheWormChart';
 import { FuelCorrectedScatter } from '@/components/charts/FuelCorrectedScatter';
 import { GhostDeltaTrace } from '@/components/charts/GhostDeltaTrace';
+import TheoreticalBestLapChart from '@/components/charts/TheoreticalBestLapChart';
+import FastestLapTelemetryChart from '@/components/charts/FastestLapTelemetryChart';
 import { PitRejoinGantt } from '@/components/charts/PitRejoinGantt';
 import { ConsistencyBoxPlot } from '@/components/charts/ConsistencyBoxPlot';
-import { TopSpeedChart } from '@/components/charts/TopSpeedChart';
+import TopSpeedChart from '@/components/charts/TopSpeedChart';
 
 export type ChartCategory = 'PRACTICE' | 'QUALI' | 'RACE' | 'GENERAL';
 
@@ -42,7 +44,7 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         id: 'quali_telemetry',
         label: 'Fastest Lap Telemetry',
         category: 'QUALI',
-        component: TelemetryTrace,
+        component: FastestLapTelemetryChart,
         gridCols: 'col-span-1 lg:col-span-2',
         height: 'h-[400px]'
     },
@@ -53,6 +55,14 @@ export const CHART_REGISTRY: ChartDefinition[] = [
         component: GhostDeltaTrace,
         gridCols: 'col-span-1',
         height: 'h-[350px]'
+    },
+    {
+        id: 'theoretical_best',
+        label: 'Theoretical Best Lap',
+        category: 'QUALI',
+        component: TheoreticalBestLapChart,
+        gridCols: 'col-span-1 lg:col-span-2',
+        height: 'h-[500px]'
     },
 
     // Race
