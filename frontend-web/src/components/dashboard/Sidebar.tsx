@@ -59,13 +59,26 @@ export function Sidebar() {
         }
     }, [selectedGP, races]);
 
-    // Mode Click Handler
-    const handleModeClick = (mode: SessionMode) => {
-        setMode(mode);
-        const modeCharts = CHART_REGISTRY
-            .filter(c => c.category === mode)
-            .map(c => c.id);
-        reorderCharts(modeCharts);
+    // State for local accordion expansion (Decoupled from global session)
+    const [expandedMode, setExpandedMode] = useState<SessionMode | null>('RACE');
+
+    // Helper: Determine if a chart should be disabled for the current session
+    const isChartDisabled = (chart: any) => {
+        // Pit Strategy & Race Gaps -> Race Only
+        if (['pit_rejoin_gantt', 'the_worm', 'fuel_scatter'].includes(chart.id)) {
+            return !['R', 'S'].includes(selectedSessionType);
+        }
+        // Race Pace -> Practice Only (technically)
+        if (['race_pace_sim'].includes(chart.id)) {
+            return !['FP1', 'FP2', 'FP3'].includes(selectedSessionType);
+        }
+        // Most others work everywhere or fail gracefully
+        return false;
+    };
+
+    const handleAccordionClick = (mode: SessionMode) => {
+        // Just toggle visibility, do not touch global state or active charts
+        setExpandedMode(expandedMode === mode ? null : mode);
     };
 
     const getModeIcon = (mode: string) => {
@@ -164,7 +177,7 @@ export function Sidebar() {
 
             <div className="h-px bg-white/5 mx-2" />
 
-            {/* Mode Selection (Accordion) */}
+            {/* Mode Selection (Accordion) - Now just "Chart Folders" */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 no-scrollbar">
                 {['PRACTICE', 'QUALI', 'RACE'].map((category) => (
                     <div key={category} className={cn(
@@ -172,11 +185,11 @@ export function Sidebar() {
                         isCollapsed ? "bg-transparent text-center" : "bg-black/20 border border-white/5"
                     )}>
                         <button
-                            onClick={() => handleModeClick(category as SessionMode)}
+                            onClick={() => handleAccordionClick(category as SessionMode)}
                             className={cn(
                                 "w-full flex items-center transition-colors",
                                 isCollapsed ? "justify-center p-2 rounded-lg" : "justify-between p-3 text-xs font-bold",
-                                selectedMode === category
+                                expandedMode === category
                                     ? (isCollapsed ? "bg-accent text-white" : "bg-white/10 text-white")
                                     : "text-text-secondary hover:text-white"
                             )}
@@ -193,27 +206,37 @@ export function Sidebar() {
                                         {category === 'RACE' && <Flag size={14} className="opacity-70" />}
                                         <span>{category}</span>
                                     </span>
-                                    <span className={cn("transition-transform", selectedMode === category ? "rotate-90" : "")}>›</span>
+                                    <span className={cn("transition-transform", expandedMode === category ? "rotate-90" : "")}>›</span>
                                 </>
                             )}
                         </button>
 
                         {/* Expanded Content (Only when Sidebar is Open) */}
-                        {!isCollapsed && selectedMode === category && (
+                        {!isCollapsed && expandedMode === category && (
                             <div className="p-2 space-y-1 bg-black/20 border-t border-white/5">
-                                {CHART_REGISTRY.filter(c => c.category === category).map(chart => (
-                                    <label key={chart.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5 cursor-pointer group">
-                                        <input
-                                            type="checkbox"
-                                            checked={activeCharts.includes(chart.id)}
-                                            onChange={() => toggleChart(chart.id)}
-                                            className="rounded border-white/20 bg-transparent text-accent focus:ring-accent"
-                                        />
-                                        <span className="text-xs text-text-secondary group-hover:text-white transition-colors">
-                                            {chart.label}
-                                        </span>
-                                    </label>
-                                ))}
+                                {CHART_REGISTRY.filter(c => c.category === category).map(chart => {
+                                    const disabled = isChartDisabled(chart);
+                                    return (
+                                        <label
+                                            key={chart.id}
+                                            className={cn(
+                                                "flex items-center gap-2 px-2 py-1.5 rounded transition-colors group",
+                                                disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-white/5 cursor-pointer"
+                                            )}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={activeCharts.includes(chart.id)}
+                                                onChange={() => !disabled && toggleChart(chart.id)}
+                                                disabled={disabled}
+                                                className="rounded border-white/20 bg-transparent text-accent focus:ring-accent disabled:opacity-50"
+                                            />
+                                            <span className="text-xs text-text-secondary group-hover:text-white transition-colors">
+                                                {chart.label}
+                                            </span>
+                                        </label>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

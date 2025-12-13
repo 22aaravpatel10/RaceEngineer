@@ -9,6 +9,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 import requests
 from typing import Optional, Dict, List, Any
+import datetime
 
 
 from core.config import get_team_color
@@ -24,8 +25,10 @@ class F1Processor:
         self.session_info = {}
     
     def get_seasons(self) -> List[int]:
-        """Return supported seasons"""
-        return [2023, 2024, 2025]
+        """Return supported seasons dynamically from 2018 to present"""
+        current_year = datetime.datetime.now().year
+        # Returns [2018, 2019, ..., current_year]
+        return list(range(2018, current_year + 1))
         
     def get_races(self, year: int) -> List[Dict]:
         """Return list of races for a given year with available sessions"""
@@ -33,9 +36,6 @@ class F1Processor:
             schedule = fastf1.get_event_schedule(year)
             races = []
             for _, event in schedule.iterrows():
-                if event['EventName'] == "Pre-Season Testing":
-                    continue
-                
                 # Extract available sessions
                 sessions = []
                 # Check Session1..5
@@ -127,9 +127,7 @@ class F1Processor:
         self.session_info = {}
 
         try:
-            # --- 2025 SIMULATION LOGIC ---
             target_year = year
-            is_simulation = False
             
             # Handle aliases for GP names via strict schedule lookup
             # This prevents FastF1's fuzzy matcher from returning British GP when we want Qatar
