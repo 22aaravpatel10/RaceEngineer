@@ -446,6 +446,97 @@ class F1Processor:
         
         return result
     
+    def get_grid_potential(self) -> Dict:
+        """
+        Calculate Theoretical Best Laps for the entire grid using Mini-Sector Analysis.
+        WARNING: Computationally expensive (~10-20s).
+        """
+        if self.laps is None:
+            raise Exception("No session loaded")
+            
+        print("Starting Grid Potential Analysis (Mini-Sectors)...")
+        drivers = self.laps['Driver'].unique()
+        leaderboard = []
+        
+        # Define 25 mini-sectors (approx every 200m for a 5km track)
+        N_SECTORS = 25
+        
+        for driver in drivers:
+            try:
+                # 1. Get Clean Laps (Accurate = not in/out, not yellow flag)
+                d_laps = self.laps.pick_driver(driver).pick_accurate()
+                if d_laps.empty: 
+                    # Fallback to just "not pit" if accurate is too strict
+                    d_laps = self.laps.pick_driver(driver).pick_wo_box()
+                    
+                if d_laps.empty: continue
+                
+                team = d_laps['Team'].iloc[0]
+                
+                # 2. Get Actual Best
+                fastest_lap = d_laps.pick_fastest()
+                if fastest_lap is None or pd.isna(fastest_lap['LapTime']): continue
+                
+                actual_time = fastest_lap['LapTime'].total_seconds()
+                
+                # 3. Mini-Sector Calculation
+                # We need a reference distance map (use fastest lap)
+                try:
+                    ref_tel = fastest_lap.get_car_data().add_distance()
+                except: continue # Skip if no telemetry
+                
+                max_dist = ref_tel['Distance'].max()
+                boundaries = np.linspace(0, max_dist, N_SECTORS + 1)
+                
+                # Store sector durations for ALL laps
+                all_sector_times = []
+                
+                for _, lap in d_laps.iterrows():
+                    try:
+                        # Get telemetry for this lap
+                        tel = lap.get_car_data().add_distance()
+                        # Interpolate time at boundaries
+                        # We map Distance -> Time
+                        t_vals = np.interp(boundaries, tel['Distance'], tel['Time'].dt.total_seconds())
+                        # Diff gives duration of each sector
+                        sector_durations = np.diff(t_vals)
+                        all_sector_times.append(sector_durations)
+                    except: continue
+                    
+                if not all_sector_times: continue
+                
+                # 4. Find Best Time for each Mini-Sector
+                # Stack arrays: rows=laps, cols=sectors
+                matrix = np.vstack(all_sector_times)
+                best_sectors = np.min(matrix, axis=0) # Best duration for each column
+                
+                theoretical_time = np.sum(best_sectors)
+                
+                # Avoid physics-breaking results (e.g. Theoretical > Actual due to interpolation noise)
+                if theoretical_time > actual_time:
+                    theoretical_time = actual_time
+                
+                delta = actual_time - theoretical_time
+                
+                leaderboard.append({
+                    "driver": driver,
+                    "team": team,
+                    "color": get_team_color(team),
+                    "actual": actual_time,
+                    "theoretical": theoretical_time,
+                    "delta": delta,
+                    "pct_unlocked": (theoretical_time / actual_time) * 100
+                })
+                
+            except Exception as e:
+                print(f"Error processing {driver}: {e}")
+                continue
+                
+        # Initial Sort: Theoretical Time
+        leaderboard.sort(key=lambda x: x['theoretical'])
+        
+        return {"data": leaderboard}
+
     def compare_drivers(self, driver1: str, driver2: str) -> Dict:
         """Compare two drivers' fastest laps"""
         if self.laps is None:
@@ -569,6 +660,13 @@ class F1Processor:
         
         return {"data": result}
         
+    def get_tyre_degradation(self) -> Dict:
+        """Get tyre degradation analysis"""
+        if self.laps is None:
+            raise Exception("No session loaded")
+            
+        return analysis_engine.calculate_tyre_degradation(self.laps)
+
     def get_ghost_trace(self, driver1: str, driver2: str) -> Dict:
         """Get ghost delta trace"""
         print(f"DEBUG: Ghost Analysis {driver1} vs {driver2}")

@@ -16,7 +16,12 @@ interface GhostData {
     corners?: { number: number; distance: number }[];
 }
 
-export function GhostDeltaTrace() {
+interface Props {
+    driverOverride?: string;
+    comparisonOverride?: string;
+}
+
+export function GhostDeltaTrace({ driverOverride, comparisonOverride }: Props) {
     const { session, selectedDriver } = useF1Store();
     const [data, setData] = useState<GhostData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -24,8 +29,13 @@ export function GhostDeltaTrace() {
     // Manual reference selection
     const [manualRef, setManualRef] = useState<string | null>(null);
 
+    // Sync comparisonOverride
+    useEffect(() => {
+        if (comparisonOverride) setManualRef(comparisonOverride);
+    }, [comparisonOverride]);
+
     // Default to a driver if none selected
-    const activeDriver = selectedDriver || (session?.drivers[0]?.code || 'VER');
+    const activeDriver = driverOverride || selectedDriver || (session?.drivers[0]?.code || 'VER');
 
     // Compute effective reference driver
     const effectiveRef = manualRef || (() => {

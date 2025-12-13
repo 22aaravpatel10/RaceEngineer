@@ -25,7 +25,12 @@ const fetchDriverFastestLap = async (driverCode: string) => {
     return telRes.data;
 };
 
-export default function FastestLapTelemetryChart() {
+interface Props {
+    driverOverride?: string;
+    comparisonOverride?: string;
+}
+
+export default function FastestLapTelemetryChart({ driverOverride, comparisonOverride }: Props) {
     const { session, selectedDriver } = useF1Store();
     const [telemetry1, setTelemetry1] = useState<any>(null);
     const [telemetry2, setTelemetry2] = useState<any>(null); // Secondary
@@ -33,10 +38,17 @@ export default function FastestLapTelemetryChart() {
     const [error, setError] = useState<string | null>(null);
 
     // Primary Driver
-    const activeDriver = selectedDriver || (session?.drivers[0]?.code || 'VER');
+    const activeDriver = driverOverride || selectedDriver || (session?.drivers[0]?.code || 'VER');
 
     // Secondary Driver (Manual or None)
     const [manualRef, setManualRef] = useState<string>("None");
+
+    // Sync manualRef with comparisonOverride if provided
+    useEffect(() => {
+        if (comparisonOverride) {
+            setManualRef(comparisonOverride);
+        }
+    }, [comparisonOverride]);
 
     console.log("[FastestLapTelemetry] Render. Driver:", activeDriver, "Ref:", manualRef);
 

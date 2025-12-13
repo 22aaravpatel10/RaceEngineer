@@ -22,6 +22,11 @@ interface Telemetry {
     brakingZones: number[][];
 }
 
+import dynamic from 'next/dynamic';
+
+const ReportGenerator = dynamic(() => import('@/components/ReportGenerator'), { ssr: false });
+const ExportConfigModal = dynamic(() => import('@/components/ExportConfigModal'), { ssr: false });
+
 export default function Dashboard() {
     const { session, setSession, setLoading, isLoading, selectedDriver, activeCharts, setDriverLaps, driverLaps, selectedYear, selectedGP, selectedSessionType, viewMode, setViewMode, reorderCharts } = useF1Store();
     const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
@@ -88,6 +93,10 @@ export default function Dashboard() {
 
             {/* Sidebar */}
             <Sidebar />
+
+            {/* Hidden Report Generator */}
+            <ReportGenerator />
+            <ExportConfigModal />
 
             {/* Main Content Area */}
             <main className="flex-1 p-4 h-full overflow-hidden relative flex flex-col gap-4">

@@ -155,6 +155,28 @@ async def get_theoretical_best(driver_code: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/analysis/grid-potential")
+async def get_grid_potential():
+    """Get the Theoretical Best Lap leaderboard (Mini-Sector Analysis)"""
+    try:
+        # This will take time, so we let it run
+        data = processor.get_grid_potential()
+        return data
+    except Exception as e:
+        print(f"Grid Potential Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/analysis/tyre-deg")
+async def get_tyre_degradation():
+    """Get Tyre Degradation rates by compound"""
+    try:
+        data = processor.get_tyre_degradation()
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/weekend/standings/{year}/{round}")
 async def get_standings_history(year: int, round: int):
     """Get championship standings history up to a specific round"""

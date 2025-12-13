@@ -13,7 +13,11 @@ interface LapOption {
     isPersonalBest: boolean;
 }
 
-export default function MultiLapTelemetryChart() {
+interface Props {
+    driverOverride?: string;
+}
+
+export default function MultiLapTelemetryChart({ driverOverride }: Props) {
     const { session, selectedDriver } = useF1Store();
     const [laps, setLaps] = useState<LapOption[]>([]);
     const [selectedLap, setSelectedLap] = useState<number | null>(null);
@@ -22,7 +26,7 @@ export default function MultiLapTelemetryChart() {
     const [error, setError] = useState<string | null>(null);
 
     // Active driver (fallback to first in session)
-    const activeDriver = selectedDriver || (session?.drivers[0]?.code || 'VER');
+    const activeDriver = driverOverride || selectedDriver || (session?.drivers[0]?.code || 'VER');
 
     // 1. Fetch Lap List when Driver changes
     useEffect(() => {

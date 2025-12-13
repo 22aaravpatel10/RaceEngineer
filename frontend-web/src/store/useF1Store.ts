@@ -73,6 +73,14 @@ interface F1State {
     setHoveredLap: (lap: number | null) => void;
     setDriverLaps: (laps: LapData[]) => void;
     setViewMode: (mode: 'dashboard' | 'summary') => void;
+    isExporting: boolean;
+    setExporting: (exporting: boolean) => void;
+
+    // Export Configuration
+    isExportConfigOpen: boolean;
+    exportConfig: Record<string, { enabled: boolean; driverOverride?: string; comparisonOverride?: string }>;
+    setExportConfigOpen: (isOpen: boolean) => void;
+    updateExportConfig: (chartId: string, enabled: boolean, driverOverride?: string, comparisonOverride?: string) => void;
 }
 
 export const useF1Store = create<F1State>((set) => ({
@@ -110,4 +118,19 @@ export const useF1Store = create<F1State>((set) => ({
     setHoveredLap: (lap) => set({ hoveredLap: lap }),
     setDriverLaps: (laps) => set({ driverLaps: laps }),
     setViewMode: (mode) => set({ viewMode: mode }),
+
+    // Export State
+    isExporting: false,
+    setExporting: (exporting: boolean) => set({ isExporting: exporting }),
+
+    // Export Configuration
+    isExportConfigOpen: false,
+    exportConfig: {},
+    setExportConfigOpen: (isOpen) => set({ isExportConfigOpen: isOpen }),
+    updateExportConfig: (chartId, enabled, driverOverride, comparisonOverride) => set(state => ({
+        exportConfig: {
+            ...state.exportConfig,
+            [chartId]: { enabled, driverOverride, comparisonOverride }
+        }
+    })),
 }));

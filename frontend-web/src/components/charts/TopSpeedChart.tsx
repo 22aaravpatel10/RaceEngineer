@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useEffect, useState } from 'react';
 import { useF1Store } from '@/store/useF1Store';
 import { api } from '@/lib/api';

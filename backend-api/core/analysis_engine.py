@@ -139,4 +139,84 @@ class AnalysisEngine:
             "delta": delta.tolist()
         }
 
+    @staticmethod
+    def calculate_tyre_degradation(laps: pd.DataFrame) -> Dict[str, List[Dict]]:
+        """
+        Calculate Tyre Degradation corrected for Fuel AND Track Evolution.
+        """
+        from scipy import stats  # Lazy import
+
+        # 1. Strict Filtering (Green Flag, Accurate)
+        clean = laps[
+            (laps['TrackStatus'] == '1') & 
+            (laps['IsAccurate'] == True) & 
+            (laps['PitInTime'].isna()) & 
+            (laps['PitOutTime'].isna())
+        ].copy()
+        
+        if clean.empty: return {}
+
+        # 2. Fuel Correction (Standard Model)
+        # 110kg start, 0.035s loss/kg, 1.7kg burn/lap
+        # We ADD this time back to normalize to "Zero Fuel" weight
+        fuel_penalty = 1.7 * 0.035 
+        clean['FuelCorrected'] = clean['LapTime'].dt.total_seconds() + (clean['LapNumber'] * fuel_penalty)
+
+        # 3. Estimate Track Evolution (The "Global Drift")
+        # We assume the 'average' driver gets faster due to track rubbering.
+        # We calculate the linear trend of the WHOLE FIELD's FuelCorrected times.
+        # If the field average slope is negative (getting faster), that's Track Evo.
+        
+        # Get x (Laps) and y (FuelCorrected Times) for entire field
+        x_global = clean['LapNumber'].values
+        y_global = clean['FuelCorrected'].values
+        
+        # Robust fit of the global trend
+        # Note: theilslopes returns (slope, intercept, low_slope, high_slope)
+        slope_global, _, _, _ = stats.theilslopes(y_global, x_global, 0.90)
+        
+        # If slope is negative (getting faster), we treat that as Track Evolution
+        track_evo_per_lap = 0
+        if slope_global < 0:
+            track_evo_per_lap = abs(slope_global)
+            
+        # Apply Track Correction
+        # We ADD this time back to simulate a track that never rubbers in.
+        clean['FullyCorrected'] = clean['FuelCorrected'] + (clean['LapNumber'] * track_evo_per_lap)
+
+        # 4. Calculate Degradation per Driver/Compound
+        results = {"SOFT": [], "MEDIUM": [], "HARD": [], "INTERMEDIATE": [], "WET": []}
+        drivers = clean['Driver'].unique()
+        
+        for driver in drivers:
+            d_laps = clean[clean['Driver'] == driver]
+            
+            for compound in d_laps['Compound'].unique():
+                if compound not in results: continue
+                c_laps = d_laps[d_laps['Compound'] == compound]
+                
+                # Need ~4 laps for a trend
+                if len(c_laps) < 4: continue
+                
+                # Robust Regression on Fully Corrected Data
+                x = c_laps['TyreLife'].values
+                y = c_laps['FullyCorrected'].values
+                
+                slope, intercept, _, _ = stats.theilslopes(y, x, 0.90)
+                
+                # Slope is now Pure Degradation (s/lap lost)
+                
+                results[compound].append({
+                    "driver": driver,
+                    "deg_per_lap": float(slope),
+                    "confidence": 1.0, # Placeholder
+                    "laps_analyzed": int(len(c_laps))
+                })
+
+        # Sort
+        for comp in results:
+            results[comp].sort(key=lambda x: x['deg_per_lap'])
+            
+        return results
+
 analysis_engine = AnalysisEngine()

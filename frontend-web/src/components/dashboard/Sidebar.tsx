@@ -3,7 +3,7 @@ import { useF1Store, SessionMode } from '@/store/useF1Store';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { CHART_REGISTRY } from '@/lib/chartRegistry';
-import { ChevronLeft, ChevronRight, Settings, BarChart2, Users, Trophy, Timer, Zap, Flag } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Settings, BarChart2, Users, Trophy, Timer, Zap, Flag, Download } from 'lucide-react';
 
 interface Race {
     round: number;
@@ -25,7 +25,8 @@ export function Sidebar() {
     const {
         session, selectedDriver, selectedMode, selectDriver,
         selectedYear, selectedGP, selectedSessionType, activeCharts,
-        setSelection, toggleChart, setMode, reorderCharts
+        setSelection, toggleChart, setMode, reorderCharts,
+        isExporting, setExporting
     } = useF1Store();
     const [seasons, setSeasons] = useState<number[]>([2025, 2024, 2023]);
     const [races, setRaces] = useState<Race[]>([]);
@@ -172,6 +173,18 @@ export function Sidebar() {
                             </select>
                         </div>
                     </>
+                )}
+
+                {/* Export Button */}
+                {!isCollapsed && (
+                    <button
+                        onClick={() => useF1Store.getState().setExportConfigOpen(true)}
+                        disabled={!session || isExporting}
+                        className="mt-2 w-full bg-white/5 hover:bg-white/10 text-text-secondary hover:text-white text-xs font-bold py-2 rounded border border-white/5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Download size={14} />
+                        EXPORT REPORT
+                    </button>
                 )}
             </div>
 

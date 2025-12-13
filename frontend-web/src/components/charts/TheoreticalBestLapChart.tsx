@@ -1,5 +1,9 @@
+"use client";
+
 import React, { useEffect, useState } from 'react';
-import Plot from 'react-plotly.js';
+import dynamic from 'next/dynamic';
+
+const Plot = dynamic(() => import('react-plotly.js'), { ssr: false });
 import { useF1Store } from '@/store/useF1Store';
 import { api } from '@/lib/api';
 
@@ -19,7 +23,12 @@ interface TheoreticalData {
     segments: MapSegment[];
 }
 
-export default function TheoreticalBestLapChart() {
+interface Props {
+    driverOverride?: string;
+    comparisonOverride?: string;
+}
+
+export default function TheoreticalBestLapChart({ driverOverride, comparisonOverride }: Props) {
     const { session, selectedDriver } = useF1Store();
     const [driverA, setDriverA] = useState<string>('VER');
     const [driverB, setDriverB] = useState<string>(''); // Comparison
@@ -27,11 +36,15 @@ export default function TheoreticalBestLapChart() {
     const [dataB, setDataB] = useState<TheoreticalData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
-    // Sync with global selection
+    // Sync with global selection (or override)
     useEffect(() => {
-        if (selectedDriver) setDriverA(selectedDriver);
+        const target = driverOverride || selectedDriver;
+        if (target) setDriverA(target);
         else if (session?.drivers?.length) setDriverA(session.drivers[0].code);
-    }, [selectedDriver, session]);
+
+        // Sync comparison
+        if (comparisonOverride) setDriverB(comparisonOverride);
+    }, [selectedDriver, session, driverOverride, comparisonOverride]);
 
     // Fetch Data Logic
     useEffect(() => {
