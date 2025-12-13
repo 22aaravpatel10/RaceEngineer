@@ -110,7 +110,7 @@ export default function PotentialLeaderboard({ page, limit }: Props) {
                 <div className="col-span-1" />
 
                 <div
-                    className="col-span-4 text-right cursor-pointer hover:text-white flex justify-end items-center gap-1"
+                    className="col-span-5 text-right cursor-pointer hover:text-white flex justify-end items-center gap-1"
                     onClick={() => handleSort('pct_unlocked')}
                 >
                     Potential %
@@ -123,7 +123,7 @@ export default function PotentialLeaderboard({ page, limit }: Props) {
                 {sortedData.map((row, index) => (
                     <div
                         key={row.driver}
-                        className="grid grid-cols-12 gap-2 items-center p-2 rounded hover:bg-white/5 border border-transparent hover:border-white/10 transition-colors group"
+                        className="grid grid-cols-12 gap-2 items-center p-2 rounded hover:bg-white/5 border border-transparent hover:border-white/10 transition-colors group h-[9%]"
                     >
                         {/* Rank */}
                         <div className="col-span-1 text-center text-xs font-mono text-white/40">
@@ -147,11 +147,10 @@ export default function PotentialLeaderboard({ page, limit }: Props) {
                             {formatTime(row.actual)}
                         </div>
 
-                        {/* Spacer */}
-                        <div className="col-span-1" />
+                        {/* Spacer Removed, giving more space to bar */}
 
                         {/* Potential Bar */}
-                        <div className="col-span-4 flex flex-col justify-center items-end">
+                        <div className="col-span-5 flex flex-col justify-center items-end">
                             <div className="flex items-baseline gap-1">
                                 <span className={cn(
                                     "text-sm font-bold tabular-nums",

@@ -99,7 +99,7 @@ export function PitRejoinGantt() {
     });
 
     return (
-        <div className="w-full h-full p-4 bg-black rounded-xl">
+        <div className="w-full h-full p-4 bg-black rounded-xl chart-loaded">
             <h3 className="text-white font-bold mb-4">Tyre Strategies</h3>
             <div className="w-full h-full min-h-[300px]">
                 <Plot
@@ -111,7 +111,7 @@ export function PitRejoinGantt() {
                         // Actually 'relative' (default aka stack) w/ base works.
                         paper_bgcolor: 'rgba(0,0,0,0)',
                         plot_bgcolor: 'rgba(0,0,0,0)',
-                        margin: { t: 10, r: 10, l: 100, b: 40 }, // Increased left margin for driver names
+                        margin: { t: 40, r: 10, l: 100, b: 40 }, // Increased top margin for legend
                         font: { family: 'Inter, sans-serif', color: '#8E8E93' },
                         xaxis: {
                             title: { text: 'Lap Number' },
@@ -125,7 +125,7 @@ export function PitRejoinGantt() {
                             type: 'category'
                         },
                         showlegend: true,
-                        legend: { orientation: 'h', y: -0.1 }
+                        legend: { orientation: 'h', y: 1.1, x: 0 } // Move to top
                     }}
                     useResizeHandler={true}
                     style={{ width: '100%', height: '100%', minHeight: '500px' }}

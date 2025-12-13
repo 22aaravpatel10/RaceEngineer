@@ -96,7 +96,7 @@ export default function FastestLapTelemetryChart({ driverOverride, comparisonOve
     }
 
     return (
-        <div className="w-full h-full p-4 flex flex-col">
+        <div className="w-full h-full p-4 flex flex-col chart-loaded">
             <div className="flex justify-between items-center mb-1">
                 <h3 className="text-white font-bold opacity-0">.</h3> {/* Spacer, title in chart */}
                 <div className="flex items-center gap-2 z-10 relative">

@@ -58,7 +58,7 @@ export default function TyreHealthChart() {
     }];
 
     return (
-        <div className="w-full h-full flex flex-col bg-[#0b0b0b] rounded-xl border border-white/10 overflow-hidden">
+        <div className="w-full h-full flex flex-col bg-[#0b0b0b] rounded-xl border border-white/10 overflow-hidden chart-loaded">
             {/* Header & Tabs */}
             <div className="flex justify-between items-center p-3 border-b border-white/10 bg-white/5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-white">

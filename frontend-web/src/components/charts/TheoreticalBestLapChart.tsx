@@ -90,7 +90,7 @@ export default function TheoreticalBestLapChart({ driverOverride, comparisonOver
     // Bounding Box Logic? Plotly handles it with scaleanchor
 
     return (
-        <div className="w-full h-full flex flex-col relative group">
+        <div className="w-full h-full flex flex-col relative group chart-loaded">
             {/* Controls Overlay */}
             <div className="absolute top-2 right-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 rounded p-1 flex gap-2">
                 <select

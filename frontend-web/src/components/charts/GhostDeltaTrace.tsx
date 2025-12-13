@@ -93,7 +93,7 @@ export function GhostDeltaTrace({ driverOverride, comparisonOverride }: Props) {
     if (!activeDriver || !data || !data.distance) return <div className="h-full flex items-center justify-center text-text-secondary">No Ghost Data Available</div>;
 
     return (
-        <div className="w-full h-full p-4 flex flex-col">
+        <div className="w-full h-full p-4 flex flex-col chart-loaded">
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-white font-bold">Ghost Delta: {activeDriver} vs {effectiveRef}</h3>
 
